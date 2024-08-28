@@ -1130,6 +1130,346 @@ _slope_test_gradient_strided_h
   });
 }
 
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Compute the upwind gradient used in the slope tests, on host
+ *
+ * template parameters:
+ *   stride        1 for scalars, 3 for vectors, 6 for symmetric tensors
+ *
+ * This function assumes the input gradient and pvar values have already
+ * been synchronized.
+ *
+ * \param[in]     ctx          Reference to dispatch context
+ * \param[in]     inc          Not an increment flag
+ * \param[in]     halo_type    halo type
+ * \param[in]     grad         standard gradient
+ * \param[out]    grdpa        upwind gradient
+ * \param[in]     pvar         values
+ * \param[in]     bc_coeffs_v  boundary condition structure for the variable
+ * \param[in]     i_massflux   mass flux at interior faces
+ */
+/*----------------------------------------------------------------------------*/
+
+template <cs_lnum_t stride, typename T>
+static void
+_slope_test_gradient_strided_h_m
+  (cs_host_context             &ctx,
+   const int                    inc,
+   const cs_real_t              grad[][3][stride],
+   T                  (*restrict grdpa)[3][stride],
+   const cs_real_t              pvar[][stride],
+   const cs_field_bc_coeffs_t  *bc_coeffs_v,
+   const cs_real_t             *i_massflux)
+{
+  using a_t = cs_real_t[stride];
+  using b_t = cs_real_t[stride][stride];
+
+  const a_t *coefa = (const a_t *)bc_coeffs_v->a;
+  const b_t *coefb = (const b_t *)bc_coeffs_v->b;
+
+  const cs_mesh_t  *m = cs_glob_mesh;
+  cs_mesh_quantities_t  *fvq = cs_glob_mesh_quantities;
+
+  const cs_lnum_t n_cells = m->n_cells;
+  const cs_lnum_t n_cells_ext = m->n_cells_with_ghosts;
+
+  const cs_lnum_2_t *restrict i_face_cells
+    = (const cs_lnum_2_t *)m->i_face_cells;
+  const cs_lnum_t *restrict b_face_cells
+    = (const cs_lnum_t *)m->b_face_cells;
+  const cs_real_t *restrict cell_vol = fvq->cell_vol;
+  const cs_real_3_t *restrict cell_cen
+    = (const cs_real_3_t *)fvq->cell_cen;
+  const cs_real_3_t *restrict i_face_u_normal
+    = (const cs_real_3_t *)fvq->i_face_u_normal;
+  const cs_real_t *restrict i_f_face_surf
+    = (const cs_real_t *)fvq->i_f_face_surf;
+  const cs_real_3_t *restrict b_face_u_normal
+    = (const cs_real_3_t *)fvq->b_face_u_normal;
+  const cs_real_t *restrict b_f_face_surf
+    = (const cs_real_t *)fvq->b_f_face_surf;
+  const cs_real_3_t *restrict i_face_cog
+    = (const cs_real_3_t *)fvq->i_face_cog;
+  const cs_real_3_t *restrict diipb
+    = (const cs_real_3_t *)fvq->diipb;
+
+  /* Cast to the parent class to obtain info on the parent class.
+     On host, we know this is not necessary and we use a simple
+     sum, but with this precaution, we can enable this function on
+     just by changing the "ctx" argument type. */
+
+  cs_dispatch_context &p_ctx = static_cast<cs_dispatch_context&>(ctx);
+  cs_dispatch_sum_type_t i_sum_type = p_ctx.get_parallel_for_i_faces_sum_type(m);
+  cs_dispatch_sum_type_t b_sum_type = p_ctx.get_parallel_for_b_faces_sum_type(m);
+
+  ctx.parallel_for(n_cells_ext, [=] CS_F_HOST_DEVICE (cs_lnum_t cell_id) {
+    for (cs_lnum_t jsou = 0; jsou < 3; jsou++)
+      for (cs_lnum_t isou = 0; isou < stride; isou++) {
+        grdpa[cell_id][jsou][isou] = 0.;
+      }
+  }
+  );
+
+  ctx.parallel_for_i_faces(m, [=] CS_F_HOST_DEVICE (cs_lnum_t  face_id) {
+
+    cs_real_t difv[3], djfv[3];
+
+    cs_lnum_t ii = i_face_cells[face_id][0];
+    cs_lnum_t jj = i_face_cells[face_id][1];
+
+    for (cs_lnum_t jsou = 0; jsou < 3; jsou++) {
+      difv[jsou] = i_face_cog[face_id][jsou] - cell_cen[ii][jsou];
+      djfv[jsou] = i_face_cog[face_id][jsou] - cell_cen[jj][jsou];
+    }
+
+    /* x-y-z component, p = u, v, w */
+
+    for (cs_lnum_t isou = 0; isou < stride; isou++) {
+      cs_real_t pif = pvar[ii][isou];
+      cs_real_t pjf = pvar[jj][isou];
+      for (cs_lnum_t jsou = 0; jsou < 3; jsou++) {
+        pif = pif + grad[ii][isou][jsou]*difv[jsou];
+        pjf = pjf + grad[jj][isou][jsou]*djfv[jsou];
+      }
+
+      cs_real_t pfac = pjf;
+      if (i_massflux[face_id] > 0.) pfac = pif;
+
+      /* U gradient */
+
+      pfac *= i_f_face_surf[face_id];
+      T vfac_i[3], vfac_j[3];
+
+      for (cs_lnum_t jsou = 0; jsou < 3; jsou++) {
+        vfac_i[jsou] = (T) pfac*i_face_u_normal[face_id][jsou];
+        vfac_j[jsou] = (T) - vfac_i[jsou];
+      }
+//TODO : créer un fonction alternative qui supporte le type [n_cell_ext][3][stride] si celle-ci ne le fait pas
+      cs_dispatch_sum<3>(grdpa[ii][isou], vfac_i, i_sum_type);
+      cs_dispatch_sum<3>(grdpa[jj][isou], vfac_j, i_sum_type);
+    }
+
+  });
+
+  ctx.parallel_for_b_faces(m, [=] CS_F_HOST_DEVICE (cs_lnum_t  face_id) {
+
+    cs_real_t diipbv[3];
+    cs_lnum_t ii = b_face_cells[face_id];
+
+    for (cs_lnum_t jsou = 0; jsou < 3; jsou++)
+      diipbv[jsou] = diipb[face_id][jsou];
+
+    /* x-y-z components, p = u, v, w */
+
+    const cs_real_t &_b_f_face_surf = b_f_face_surf[face_id];
+
+    for (cs_lnum_t isou = 0; isou < stride; isou++) {
+      cs_real_t pfac = inc*coefa[face_id][isou];
+      T vfac[3];
+
+      /*coefu is a matrix */
+      for (cs_lnum_t jsou = 0; jsou < stride; jsou++) {
+        pfac += coefb[face_id][jsou][isou]*(  pvar[ii][jsou]
+                                            + grad[ii][jsou][0]*diipbv[0]
+                                            + grad[ii][jsou][1]*diipbv[1]
+                                            + grad[ii][jsou][2]*diipbv[2]);
+      }
+      for (cs_lnum_t jsou =  0; jsou < 3; jsou++)
+        vfac[jsou] = (T) pfac * _b_f_face_surf * b_face_u_normal[face_id][jsou];
+
+//TODO : créer un fonction alternative qui supporte le type [n_cell_ext][3][stride] si celle-ci ne le fait pas
+      cs_dispatch_sum<3>(grdpa[ii][isou], vfac, b_sum_type);
+    }
+
+  });
+
+  ctx.parallel_for(n_cells, [=] CS_F_HOST_DEVICE (cs_lnum_t cell_id) {
+    cs_real_t unsvol = 1./cell_vol[cell_id];
+    for (cs_lnum_t jsou = 0; jsou < 3; jsou++){
+      for (cs_lnum_t isou = 0; isou < stride; isou++) {
+          grdpa[cell_id][jsou][isou] = grdpa[cell_id][jsou][isou]*unsvol;
+      }
+    }
+  });
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Compute the upwind gradient used in the slope tests, on device
+ *
+ * template parameters:
+ *   stride        1 for scalars, 3 for vectors, 6 for symmetric tensors
+ *
+ * This function assumes the input gradient and pvar values have already
+ * been synchronized.
+ *
+ * \param[in]     ctx          Reference to dispatch context
+ * \param[in]     inc          Not an increment flag
+ * \param[in]     halo_type    halo type
+ * \param[in]     grad         standard gradient
+ * \param[out]    grdpa        upwind gradient
+ * \param[in]     pvar         values
+ * \param[in]     bc_coeffs_v  boundary condition structure for the variable
+ * \param[in]     i_massflux   mass flux at interior faces
+ */
+/*----------------------------------------------------------------------------*/
+
+#if defined(HAVE_ACCEL)
+
+template <cs_lnum_t stride, typename T>
+static void
+_slope_test_gradient_strided_d_m
+  (cs_device_context           &ctx,
+   const int                    inc,
+   const cs_real_t              grad[][3][stride],
+   T                  (*restrict grdpa)[3][stride],
+   const cs_real_t              pvar[][stride],
+   const cs_field_bc_coeffs_t  *bc_coeffs_v,
+   const cs_real_t             *i_massflux)
+{
+  using a_t = cs_real_t[stride];
+  using b_t = cs_real_t[stride][stride];
+
+  const a_t *coefa = (const a_t *)bc_coeffs_v->a;
+  const b_t *coefb = (const b_t *)bc_coeffs_v->b;
+
+  const cs_mesh_t  *m = cs_glob_mesh;
+  cs_mesh_quantities_t  *fvq = cs_glob_mesh_quantities;
+
+  const cs_lnum_t n_cells = m->n_cells;
+
+  const cs_lnum_t *restrict b_face_cells
+    = (const cs_lnum_t *)m->b_face_cells;
+  const cs_real_t *restrict cell_vol = fvq->cell_vol;
+  const cs_real_3_t *restrict cell_cen
+    = (const cs_real_3_t *)fvq->cell_cen;
+  const cs_real_3_t *restrict i_face_u_normal
+    = (const cs_real_3_t *)fvq->i_face_u_normal;
+  const cs_real_t *restrict i_f_face_surf
+    = (const cs_real_t *)fvq->i_f_face_surf;
+  const cs_real_3_t *restrict b_face_u_normal
+    = (const cs_real_3_t *)fvq->b_face_u_normal;
+  const cs_real_t *restrict b_f_face_surf
+    = (const cs_real_t *)fvq->b_f_face_surf;
+  const cs_real_3_t *restrict i_face_cog
+    = (const cs_real_3_t *)fvq->i_face_cog;
+  const cs_real_3_t *restrict diipb
+    = (const cs_real_3_t *)fvq->diipb;
+
+  const cs_mesh_adjacencies_t *ma = cs_glob_mesh_adjacencies;
+  cs_mesh_adjacencies_update_cell_i_faces();
+  const cs_lnum_t *c2c = ma->cell_cells;
+  const cs_lnum_t *c2c_idx = ma->cell_cells_idx;
+  const short int *c2f_sgn = ma->cell_i_faces_sgn;
+  const cs_lnum_t *cell_i_faces = ma->cell_i_faces;
+
+  /* Cast to the parent class to obtain info on the parent class.
+     On device, we know this is not necessary and we use an atomic
+     sum, but with this precaution, we can enable this function on
+     just by changing the "ctx" argument type. */
+  cs_dispatch_context &p_ctx = static_cast<cs_dispatch_context&>(ctx);
+  cs_dispatch_sum_type_t b_sum_type = p_ctx.get_parallel_for_b_faces_sum_type(m);
+
+  ctx.parallel_for(n_cells, [=] CS_F_HOST_DEVICE (cs_lnum_t cell_id) {
+
+    T grdpa_c[3][stride];
+
+    for (cs_lnum_t jsou = 0; jsou < 3; jsou++){
+      for (cs_lnum_t isou = 0; isou < stride; isou++) {
+        grdpa_c[jsou][isou] = 0.;
+      }
+    }
+
+    /* Loop on interior faces */
+    const cs_lnum_t s_id_i = c2c_idx[cell_id];
+    const cs_lnum_t e_id_i = c2c_idx[cell_id + 1];
+
+    for (cs_lnum_t cidx = s_id_i; cidx < e_id_i; cidx++) {
+      const cs_lnum_t face_id = cell_i_faces[cidx];
+
+      /* Which cell is upwind ? */
+      cs_lnum_t u_cell_id = cell_id;
+      short int f_sgn = c2f_sgn[cidx];
+      if (f_sgn*i_massflux[face_id] <= 0.)
+        u_cell_id = c2c[cidx];
+
+      cs_real_t dufv[3];
+      for (cs_lnum_t jsou = 0; jsou < 3; jsou++)
+        dufv[jsou] = i_face_cog[face_id][jsou] - cell_cen[u_cell_id][jsou];
+
+      /* For each component */
+
+      for (cs_lnum_t isou = 0; isou < stride; isou++) {
+        cs_real_t pfac = pvar[u_cell_id][isou];
+        for (cs_lnum_t jsou = 0; jsou < 3; jsou++) {
+          pfac += grad[u_cell_id][isou][jsou]*dufv[jsou];
+        }
+
+        /* U gradient */
+
+        pfac *= i_f_face_surf[face_id] * f_sgn;
+
+        for (cs_lnum_t jsou = 0; jsou < 3; jsou++)
+          grdpa_c[isou][jsou] += pfac*i_face_u_normal[face_id][jsou];
+      }
+    }
+
+    /* Scale now to avoid second loop */
+
+    cs_real_t unsvol = 1./cell_vol[cell_id];
+    for (cs_lnum_t isou = 0; isou < stride; isou++) {
+      for (cs_lnum_t jsou = 0; jsou < 3; jsou++)
+        grdpa[cell_id][isou][jsou] = grdpa_c[isou][jsou]*unsvol;
+    }
+
+  });
+
+  /* Contribution from boundary faces
+
+     TODO! test folding this into previous kernel when BC coefficients
+     are handled using the new scheme. For now, we keep this loop
+     separate, as handling of BC coefficients is more costly so this
+     could add a lot of imbalance between cells in the main kernel */
+
+  ctx.parallel_for_b_faces(m, [=] CS_F_HOST_DEVICE (cs_lnum_t  face_id) {
+
+    cs_lnum_t ii = b_face_cells[face_id];
+
+    cs_real_t diipbv[3];
+    for (cs_lnum_t jsou = 0; jsou < 3; jsou++)
+      diipbv[jsou] = diipb[face_id][jsou];
+
+    /* x-y-z components, p = u, v, w */
+
+    const cs_real_t _b_f_face_surf_o_v
+      = b_f_face_surf[face_id] / cell_vol[ii];
+
+    for (cs_lnum_t isou = 0; isou < stride; isou++) {
+      cs_real_t pfac = inc*coefa[face_id][isou];
+      T vfac[3];
+
+      /*coefu is a matrix */
+      for (cs_lnum_t jsou =  0; jsou < stride; jsou++) {
+        pfac += coefb[face_id][jsou][isou]*(  pvar[ii][jsou]
+                                            + grad[ii][jsou][0]*diipbv[0]
+                                            + grad[ii][jsou][1]*diipbv[1]
+                                            + grad[ii][jsou][2]*diipbv[2]);
+      }
+      for (cs_lnum_t jsou =  0; jsou < 3; jsou++)
+        vfac[jsou] = (T) pfac * _b_f_face_surf_o_v * b_face_u_normal[face_id][jsou];
+
+      cs_dispatch_sum<3>(grdpa[ii][isou], vfac, b_sum_type);
+    }
+
+  });
+}
+
+#endif /* defined(HAVE_ACCEL) */
+
+
+
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief Compute the upwind gradient used in the slope tests, on device
@@ -1338,11 +1678,27 @@ _slope_test_gradient_strided
 
   bool use_gpu = ctx.use_gpu();
   const cs_mesh_t  *m = cs_glob_mesh;
+  const cs_lnum_t n_cells_ext = m->n_cells_with_ghosts;
+  const cs_lnum_t n_cells = m->n_cells;
+  using grad_t = T[3][stride];
+  grad_t *grdpa_switch, *grad_switch;
+  size_t size = n_cells * sizeof(T) * stride *3;
+  CS_MALLOC_HD(grdpa_switch, n_cells_ext, grad_t, CS_ALLOC_HOST_DEVICE_SHARED);
+  CS_MALLOC_HD(grad_switch, n_cells_ext, grad_t, CS_ALLOC_HOST_DEVICE_SHARED);
 
-  std::chrono::high_resolution_clock::time_point t_start;
-  std::chrono::high_resolution_clock::time_point t_stop;
-  std::chrono::microseconds elapsed;
-  t_start = std::chrono::high_resolution_clock::now();
+  // Create transposed copy
+  for (cs_lnum_t i = 0; i < n_cells_ext; i++) {
+    for (cs_lnum_t j = 0; j < stride; j++) {
+      for (cs_lnum_t k = 0; k < 3; k++) {
+        grdpa_switch[i][k][j] = grdpa[i][j][k];
+        grad_switch[i][k][j] = grad[i][j][k];
+      }
+    }
+  }
+
+  std::chrono::high_resolution_clock::time_point t_start, t_start_switch;
+  std::chrono::high_resolution_clock::time_point t_stop, t_stop_switch;
+  std::chrono::microseconds elapsed, elapsed_switch;
   if (cs_glob_timer_kernels_flag > 0)
     t_start = std::chrono::high_resolution_clock::now();
   // use_gpu = false;
@@ -1351,6 +1707,7 @@ _slope_test_gradient_strided
   if (use_gpu) {
     cs_device_context &d_ctx = static_cast<cs_device_context&>(ctx);
 
+    t_start = std::chrono::high_resolution_clock::now();
     _slope_test_gradient_strided_d<stride, T>
       (d_ctx,
        inc,
@@ -1359,6 +1716,32 @@ _slope_test_gradient_strided
        pvar,
        bc_coeffs_v,
        i_massflux);
+
+    ctx.wait();
+    t_stop = std::chrono::high_resolution_clock::now();
+    printf("%d: %s<%d>", cs_glob_rank_id, __func__, stride);
+
+    elapsed = std::chrono::duration_cast
+                <std::chrono::microseconds>(t_stop - t_start);
+    printf(", GPU total_slope_%d = %ld\n", stride, elapsed.count());
+
+    t_start_switch = std::chrono::high_resolution_clock::now();
+    _slope_test_gradient_strided_d_m<stride, T>
+      (d_ctx,
+       inc,
+       grad,
+       grdpa,
+       pvar,
+       bc_coeffs_v,
+       i_massflux);
+
+    ctx.wait();
+    t_stop_switch = std::chrono::high_resolution_clock::now();
+    printf("%d: %s<%d>", cs_glob_rank_id, __func__, stride);
+
+    elapsed_switch = std::chrono::duration_cast
+                <std::chrono::microseconds>(t_stop_switch - t_start_switch);
+    printf(", GPU total_slope_switch_%d = %ld\n", stride, elapsed_switch.count());
   }
 
 #endif
@@ -1366,6 +1749,7 @@ _slope_test_gradient_strided
   if (use_gpu == false) {
     cs_host_context &h_ctx = static_cast<cs_host_context&>(ctx);
 
+    t_start = std::chrono::high_resolution_clock::now();
     _slope_test_gradient_strided_h<stride, T>
       (h_ctx,
        inc,
@@ -1374,15 +1758,41 @@ _slope_test_gradient_strided
        pvar,
        bc_coeffs_v,
        i_massflux);
+
+    ctx.wait();
+    t_stop = std::chrono::high_resolution_clock::now();
+    printf("%d: %s<%d>", cs_glob_rank_id, __func__, stride);
+
+    elapsed = std::chrono::duration_cast
+                <std::chrono::microseconds>(t_stop - t_start);
+    printf(", CPU total_slope_%d = %ld\n", stride, elapsed.count());
+
+    t_start_switch = std::chrono::high_resolution_clock::now();
+    _slope_test_gradient_strided_h_m<stride, T>
+      (h_ctx,
+       inc,
+       grad_switch,
+       grdpa_switch,
+       pvar,
+       bc_coeffs_v,
+       i_massflux);
+
+    ctx.wait();
+    t_stop_switch = std::chrono::high_resolution_clock::now();
+    printf("%d: %s<%d>", cs_glob_rank_id, __func__, stride);
+
+    elapsed_switch = std::chrono::duration_cast
+                <std::chrono::microseconds>(t_stop_switch - t_start_switch);
+    printf(", CPU total_slope_switch_%d = %ld\n", stride, elapsed_switch.count());
   }
 
   ctx.wait();
-  t_stop = std::chrono::high_resolution_clock::now();
-  printf("%d: %s<%d>", cs_glob_rank_id, __func__, stride);
+  // t_stop = std::chrono::high_resolution_clock::now();
+  // printf("%d: %s<%d>", cs_glob_rank_id, __func__, stride);
 
-  elapsed = std::chrono::duration_cast
-              <std::chrono::microseconds>(t_stop - t_start);
-  printf(", total_slope_after__slope_test_gradient_%d = %ld\n", stride, elapsed.count());
+  // elapsed = std::chrono::duration_cast
+  //             <std::chrono::microseconds>(t_stop - t_start);
+  // printf(", total_slope_after__slope_test_gradient_%d = %ld\n", stride, elapsed.count());
   // use_gpu = true;
 
   /* Handle parallelism and periodicity */
@@ -1395,21 +1805,21 @@ _slope_test_gradient_strided
 
     std::copy(&grdpa[0][0][0], &grdpa[0][0][0] + n_cells_ext * stride * 3, &grdpa_double[0][0][0]);
 
-    t_start = std::chrono::high_resolution_clock::now();
+    // t_start = std::chrono::high_resolution_clock::now();
     _sync_strided_gradient_halo<stride>(m,
                                         use_gpu,
                                         halo_type,
                                         grdpa_double);
-    t_stop = std::chrono::high_resolution_clock::now();
+    // t_stop = std::chrono::high_resolution_clock::now();
 
     std::copy(&grdpa_double[0][0][0], &grdpa_double[0][0][0] + n_cells_ext * stride * 3, &grdpa[0][0][0]);
     BFT_FREE(grdpa_double);
 
-    printf("%d: %s<%d>", cs_glob_rank_id, __func__, stride);
+    // printf("%d: %s<%d>", cs_glob_rank_id, __func__, stride);
 
-    elapsed = std::chrono::duration_cast
-                <std::chrono::microseconds>(t_stop - t_start);
-    printf(", total_slope_after_copy_%d = %ld\n", stride, elapsed.count());
+    // elapsed = std::chrono::duration_cast
+    //             <std::chrono::microseconds>(t_stop - t_start);
+    // printf(", total_slope_after_copy_%d = %ld\n", stride, elapsed.count());
   }
   
   if (cs_glob_timer_kernels_flag > 0) {
