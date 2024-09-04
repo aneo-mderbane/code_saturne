@@ -1404,7 +1404,7 @@ _slope_test_gradient_strided_d_m
       for (cs_lnum_t isou = 0; isou < stride; isou++) {
         cs_real_t pfac = pvar[u_cell_id][isou];
         for (cs_lnum_t jsou = 0; jsou < 3; jsou++) {
-          pfac += grad[u_cell_id][isou][jsou]*dufv[jsou];
+          pfac += grad[u_cell_id][jsou][isou]*dufv[jsou];
         }
 
         /* U gradient */
@@ -1412,7 +1412,7 @@ _slope_test_gradient_strided_d_m
         pfac *= i_f_face_surf[face_id] * f_sgn;
 
         for (cs_lnum_t jsou = 0; jsou < 3; jsou++)
-          grdpa_c[isou][jsou] += pfac*i_face_u_normal[face_id][jsou];
+          grdpa_c[jsou][isou] += pfac*i_face_u_normal[face_id][jsou];
       }
     }
 
@@ -1421,7 +1421,7 @@ _slope_test_gradient_strided_d_m
     cs_real_t unsvol = 1./cell_vol[cell_id];
     for (cs_lnum_t isou = 0; isou < stride; isou++) {
       for (cs_lnum_t jsou = 0; jsou < 3; jsou++)
-        grdpa[cell_id][isou][jsou] = grdpa_c[isou][jsou]*unsvol;
+        grdpa[cell_id][jsou][isou] = grdpa_c[jsou][isou]*unsvol;
     }
 
   });
@@ -1446,23 +1446,25 @@ _slope_test_gradient_strided_d_m
     const cs_real_t _b_f_face_surf_o_v
       = b_f_face_surf[face_id] / cell_vol[ii];
 
+    cs_real_t pfac[stride];
+    T vfac[3][stride];
     for (cs_lnum_t isou = 0; isou < stride; isou++) {
-      cs_real_t pfac = inc*coefa[face_id][isou];
-      T vfac[3];
+      pfac[isou] = inc*coefa[face_id][isou];
 
       /*coefu is a matrix */
       for (cs_lnum_t jsou =  0; jsou < stride; jsou++) {
-        pfac += coefb[face_id][jsou][isou]*(  pvar[ii][jsou]
-                                            + grad[ii][jsou][0]*diipbv[0]
-                                            + grad[ii][jsou][1]*diipbv[1]
-                                            + grad[ii][jsou][2]*diipbv[2]);
+        pfac[isou] += coefb[face_id][jsou][isou]*(  pvar[ii][jsou]
+                                            + grad[ii][0][jsou]*diipbv[0]
+                                            + grad[ii][1][jsou]*diipbv[1]
+                                            + grad[ii][2][jsou]*diipbv[2]);
       }
       for (cs_lnum_t jsou =  0; jsou < 3; jsou++)
-        vfac[jsou] = (T) pfac * _b_f_face_surf_o_v * b_face_u_normal[face_id][jsou];
+        vfac[jsou][isou] = (T) pfac[isou]  * _b_f_face_surf_o_v * b_face_u_normal[face_id][jsou];
 
-      cs_dispatch_sum<3>(grdpa[ii][isou], vfac, b_sum_type);
     }
-
+    for (cs_lnum_t isou = 0; isou < 3; isou++) {
+      cs_dispatch_sum<stride>(grdpa[ii][isou], vfac[isou], b_sum_type);
+    }
   });
 }
 
@@ -1707,6 +1709,25 @@ _slope_test_gradient_strided
   if (use_gpu) {
     cs_device_context &d_ctx = static_cast<cs_device_context&>(ctx);
 
+    t_start_switch = std::chrono::high_resolution_clock::now();
+    _slope_test_gradient_strided_d_m<stride, T>
+      (d_ctx,
+       inc,
+       grad_switch,
+       grdpa_switch,
+       pvar,
+       bc_coeffs_v,
+       i_massflux);
+
+    ctx.wait();
+    t_stop_switch = std::chrono::high_resolution_clock::now();
+    printf("%d: %s<%d>", cs_glob_rank_id, __func__, stride);
+
+    elapsed_switch = std::chrono::duration_cast
+                <std::chrono::microseconds>(t_stop_switch - t_start_switch);
+    printf(", GPU total_slope_switch_%d = %ld\n", stride, elapsed_switch.count());
+
+    
     t_start = std::chrono::high_resolution_clock::now();
     _slope_test_gradient_strided_d<stride, T>
       (d_ctx,
@@ -1725,23 +1746,6 @@ _slope_test_gradient_strided
                 <std::chrono::microseconds>(t_stop - t_start);
     printf(", GPU total_slope_%d = %ld\n", stride, elapsed.count());
 
-    t_start_switch = std::chrono::high_resolution_clock::now();
-    _slope_test_gradient_strided_d_m<stride, T>
-      (d_ctx,
-       inc,
-       grad,
-       grdpa,
-       pvar,
-       bc_coeffs_v,
-       i_massflux);
-
-    ctx.wait();
-    t_stop_switch = std::chrono::high_resolution_clock::now();
-    printf("%d: %s<%d>", cs_glob_rank_id, __func__, stride);
-
-    elapsed_switch = std::chrono::duration_cast
-                <std::chrono::microseconds>(t_stop_switch - t_start_switch);
-    printf(", GPU total_slope_switch_%d = %ld\n", stride, elapsed_switch.count());
   }
 
 #endif
