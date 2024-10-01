@@ -32,10 +32,7 @@
  *----------------------------------------------------------------------------*/
 
 #include "cs_defs.h"
-
-#if defined(__cplusplus)
-#include <typeinfo>
-#endif
+#include "cs_execution_context.h"
 
 /*----------------------------------------------------------------------------*/
 
@@ -97,15 +94,11 @@ cs_parall_counter(cs_gnum_t   cpt[],
   }
 }
 
-#elif defined(HAVE_MPI)
+#else
 
 void
 cs_parall_counter(cs_gnum_t   cpt[],
                   const int   n);
-
-#else
-
-#define cs_parall_counter(_cpt, _n)
 
 #endif
 
@@ -130,15 +123,11 @@ cs_parall_counter_max(cs_lnum_t   cpt[],
   }
 }
 
-#elif defined(HAVE_MPI)
+#else
 
 void
 cs_parall_counter_max(cs_lnum_t   cpt[],
                       const int   n);
-
-#else
-
-#define cs_parall_counter_max(_cpt, _n)
 
 #endif
 
@@ -165,16 +154,12 @@ cs_parall_sum(int             n,
   }
 }
 
-#elif defined(HAVE_MPI)
+#else
 
 void
 cs_parall_sum(int             n,
               cs_datatype_t   datatype,
               void           *val);
-
-#else
-
-#define cs_parall_sum(_n, _datatype, _val) { };
 
 #endif
 
@@ -202,16 +187,12 @@ cs_parall_max(int             n,
   }
 }
 
-#elif defined(HAVE_MPI)
+#else
 
 void
 cs_parall_max(int             n,
               cs_datatype_t   datatype,
               void           *val);
-
-#else
-
-#define cs_parall_max(_n, _datatype, _val);
 
 #endif
 
@@ -239,16 +220,12 @@ cs_parall_min(int             n,
   }
 }
 
-#elif defined(HAVE_MPI)
+#else
 
 void
 cs_parall_min(int             n,
               cs_datatype_t   datatype,
               void           *val);
-
-#else
-
-#define cs_parall_min(_n, _datatype, _val);
 
 #endif
 
@@ -564,6 +541,37 @@ cs_parall_set_min_coll_buf_size(size_t buffer_size);
 
 /*----------------------------------------------------------------------------*/
 /*!
+ * \brief Compute recommended number of threads for a section.
+ *
+ * This is based on the available number of threads, and limited
+ * by a minimum number of elements per thread.
+ *
+ * \param[in]  n_elements           size of array
+ * \param[in]  min_thread_elements  minimum number of elements per thread.
+ */
+/*----------------------------------------------------------------------------*/
+
+inline static int
+cs_parall_n_threads(cs_lnum_t  n_elements,
+                    cs_lnum_t  min_thread_elements)
+{
+#if defined(HAVE_OPENMP)
+  int n_t = omp_get_max_threads();
+  int n_t_l = n_elements / min_thread_elements;
+  if (n_t_l < n_t)
+    n_t = n_t_l;
+  if (n_t < 1)
+    n_t = 1;
+  return n_t;
+#else
+  CS_UNUSED(n_elements);         /* avoid compiler warning */
+  CS_UNUSED(min_thread_elements);
+  return 1;
+#endif
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
  * \brief Compute array index bounds for a local thread.
  *        When called inside an OpenMP parallel section, this will return the
  *        start an past-the-end indexes for the array range assigned to that
@@ -676,11 +684,224 @@ cs_parall_block_count(size_t  n,
 
 END_C_DECLS
 
+#if defined(__cplusplus)
+
+/*=============================================================================
+ * Public C++ functions
+ *============================================================================*/
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Sum values of a counter on all default communicator processes.
+ *
+ * \param[in]       ec   parallel execution context
+ * \param[in, out]  cpt  local counter in, global counter out (size: n)
+ * \param[in]       n    number of values
+ */
+/*----------------------------------------------------------------------------*/
+
+#if defined(HAVE_MPI_IN_PLACE)
+
+inline static void
+cs_parall_counter(cs_execution_context  *ec,
+                  cs_gnum_t              cpt[],
+                  const int              n)
+{
+  if (ec->use_mpi()) {
+    MPI_Allreduce(MPI_IN_PLACE, cpt, n, CS_MPI_GNUM, MPI_SUM,
+                  ec->comm());
+  }
+}
+
+#else
+
+void
+cs_parall_counter(cs_execution_context  *ec,
+                  cs_gnum_t              cpt[],
+                  const int              n);
+
+#endif
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Maximum values of a counter on all default communicator processes.
+ *
+ * \param[in]       ec   parallel execution context
+ * \param[in, out]  cpt  local counter in, global counter out (size: n)
+ * \param[in]       n    number of values
+ */
+/*----------------------------------------------------------------------------*/
+
+#if defined(HAVE_MPI_IN_PLACE)
+
+inline static void
+cs_parall_counter_max(cs_execution_context  *ec,
+                      cs_lnum_t              cpt[],
+                      const int              n)
+{
+  if (ec->use_mpi()) {
+    MPI_Allreduce(MPI_IN_PLACE, cpt, n, CS_MPI_LNUM, MPI_MAX,
+                  ec->comm());
+  }
+}
+
+#else
+
+void
+cs_parall_counter_max(cs_execution_context  *ec,
+                      cs_lnum_t              cpt[],
+                      const int              n);
+
+#endif
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Sum values of a given datatype on all of a communicator processes.
+ *
+ * \param[in]       ec        parallel execution context
+ * \param[in]       n         number of values
+ * \param[in]       datatype  matching code_saturne datatype
+ * \param[in, out]  val       local value input, global value output (array)
+ */
+/*----------------------------------------------------------------------------*/
+
+#if defined(HAVE_MPI_IN_PLACE)
+
+inline static void
+cs_parall_sum(cs_execution_context  *ec,
+              int                    n,
+              cs_datatype_t          datatype,
+              void                  *val)
+{
+  if (ec->use_mpi()) {
+    MPI_Allreduce(MPI_IN_PLACE, val, n,
+                  cs_datatype_to_mpi[datatype], MPI_SUM,
+                  ec->comm());
+  }
+}
+
+#else
+
+void
+cs_parall_sum(cs_execution_context  *ec,
+              int                    n,
+              cs_datatype_t          datatype,
+              void                  *val);
+
+#endif
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Maximum values of a given datatype on all default
+ *        communicator processes.
+ *
+ * \param[in]       ec       parallel execution context
+ * \param[in]       n        number of values
+ * \param[in]       datatype matching code_saturne datatype
+ * \param[in, out]  val      local value input, global value output (array)
+ */
+/*----------------------------------------------------------------------------*/
+
+#if defined(HAVE_MPI_IN_PLACE)
+
+inline static void
+cs_parall_max(cs_execution_context  *ec,
+              int                    n,
+              cs_datatype_t          datatype,
+              void                  *val)
+{
+  if (ec->use_mpi()) {
+    MPI_Allreduce(MPI_IN_PLACE, val, n,
+                  cs_datatype_to_mpi[datatype], MPI_MAX,
+                  ec->comm());
+  }
+}
+
+#else
+
+void
+cs_parall_max(cs_execution_context *ec,
+              int                   n,
+              cs_datatype_t         datatype,
+              void                 *val);
+
+#endif
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Minimum values of a given datatype on all default
+ *        communicator processes.
+ *
+ * \param[in]       ec       parallel execution context
+ * \param[in]       n        number of values
+ * \param[in]       datatype matching code_saturne datatype
+ * \param[in, out]  val      local value input, global value output (array)
+ */
+/*----------------------------------------------------------------------------*/
+
+#if defined(HAVE_MPI_IN_PLACE)
+
+inline static void
+cs_parall_min(cs_execution_context  *ec,
+              int                    n,
+              cs_datatype_t          datatype,
+              void                  *val)
+{
+  if (ec->use_mpi()) {
+    MPI_Allreduce(MPI_IN_PLACE, val, n,
+                  cs_datatype_to_mpi[datatype], MPI_MIN,
+                  ec->comm());
+  }
+}
+
+#else
+
+void
+cs_parall_min(cs_execution_context  *ec,
+              int                    n,
+              cs_datatype_t          datatype,
+              void                  *val);
+
+#endif
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Compute array index bounds for a given thread.
+ *        This will return the
+ *        start an past-the-end indexes for the array range assigned to that
+ *        thread. In other cases, the start index is 1, and the past-the-end
+ *        index is n;
+ *
+ * \param[in]       n          size of array
+ * \param[in]       type_size  element type size (or multiple)
+ * \param[in]       t_id       thread id
+ * \param[in]       n_t        number of threads
+ * \param[in, out]  s_id       start index for the current thread
+ * \param[in, out]  e_id       past-the-end index for the current thread
+ */
+/*----------------------------------------------------------------------------*/
+
+inline static void
+cs_parall_thread_range(cs_lnum_t    n,
+                       size_t       type_size,
+                       int          t_id,
+                       int          n_t,
+                       cs_lnum_t   *s_id,
+                       cs_lnum_t   *e_id)
+{
+  const cs_lnum_t t_n = (n + n_t - 1) / n_t;
+  const cs_lnum_t cl_m = CS_CL_SIZE / type_size;  /* Cache line multiple */
+
+  *s_id =  t_id    * t_n;
+  *e_id = (t_id+1) * t_n;
+  *s_id = cs_align(*s_id, cl_m);
+  *e_id = cs_align(*e_id, cl_m);
+  if (*e_id > n) *e_id = n;
+}
+
 /*=============================================================================
  * Public C++ templates
  *============================================================================*/
-
-#if defined(__cplusplus)
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -694,7 +915,7 @@ template <typename T, typename... Vals>
 static void
 cs_parall_sum_scalars
 (
-  T&       First, /*!< [in, out]  First scalar to update */
+  T&       first, /*!< [in, out]  First scalar to update */
   Vals&... values /*!< [in, out]  Additional scalars to update */
 )
 {
@@ -707,43 +928,132 @@ cs_parall_sum_scalars
   constexpr size_t n_vals = sizeof...(Vals);
 
   /* Set datatype for global communication */
-  cs_datatype_t datatype = CS_DATATYPE_NULL;
-
-  if (typeid(T) ==  typeid(int))
-    datatype = CS_INT_TYPE;
-  else if (typeid(T) ==  typeid(cs_lnum_t))
-    datatype = CS_LNUM_TYPE;
-  else if (typeid(T) ==  typeid(cs_gnum_t))
-    datatype = CS_GNUM_TYPE;
-  else if (typeid(T) == typeid(cs_flag_t))
-    datatype = CS_UINT16;
-  else if (typeid(T) ==  typeid(cs_real_t))
-    datatype = CS_REAL_TYPE;
-  else if (typeid(T) ==  typeid(double))
-    datatype = CS_DOUBLE;
-  else if (typeid(T) == typeid(cs_coord_t))
-    datatype = CS_COORD_TYPE;
+  cs_datatype_t datatype = cs_datatype_from_type<T>();
 
   /* Temporary work array and parallel sum */
   if (n_vals == 0)
-    cs_parall_sum(1, datatype, &First);
+    cs_parall_sum(1, datatype, &first);
   else {
     /* Unpack values */
     T *_values[] = {&values ...};
 
     T w[n_vals + 1];
-    w[0] = First;
+    w[0] = first;
     for (size_t i = 0; i < n_vals; i++)
       w[i+1] = *(_values[i]);
 
     cs_parall_sum(n_vals + 1, datatype, w);
 
-    First = w[0];
+    first = w[0];
     for (size_t i = 0; i < n_vals; i++)
       *(_values[i]) = w[i+1];
   }
 
-#endif
+#endif // defined(HAVE_MPI)
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Sum values of a given datatype over a given communicator
+ *
+ * \tparam T : datatype
+ */
+/*----------------------------------------------------------------------------*/
+
+template <typename T, typename... Vals>
+static void
+cs_parall_sum_scalars
+(
+  cs_execution_context  *ec,     /*!<[in] Parallel execution context */
+  T&                     first,  /*!<[in, out]  First scalar to update */
+  Vals&...               values  /*!<[in, out]  Additional scalars to update */
+)
+{
+#if defined(HAVE_MPI)
+
+  /* Count number of values */
+  constexpr size_t n_vals = sizeof...(Vals);
+
+  /* Set datatype for global communication */
+  cs_datatype_t datatype = cs_datatype_from_type<T>();
+
+  /* Temporary work array and parallel sum */
+  if (n_vals == 0)
+    cs_parall_sum(ec, 1, datatype, &first);
+  else {
+    /* Unpack values */
+    T *_values[] = {&values ...};
+
+    T w[n_vals + 1];
+    w[0] = first;
+    for (size_t i = 0; i < n_vals; i++)
+      w[i+1] = *(_values[i]);
+
+    cs_parall_sum(ec, n_vals + 1, datatype, w);
+
+    first = w[0];
+    for (size_t i = 0; i < n_vals; i++)
+      *(_values[i]) = w[i+1];
+  }
+
+#endif // defined(HAVE_MPI)
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Sum strided-values of a given datatype over a communicator
+ *
+ * \tparam T      : datatype
+ * \tparam stride : stride/dimension of values
+ */
+/*----------------------------------------------------------------------------*/
+
+template <int Stride, typename T, typename... Vals>
+static void
+cs_parall_sum_strided
+(
+  cs_execution_context  *ec,      /*!< [in] Parallel execution context */
+  T                      first[], /*!< [in, out]  First scalar to update */
+  Vals&&...              values   /*!< [in, out]  Additional values to update */
+)
+{
+#if defined(HAVE_MPI)
+
+  /* Count number of values */
+  constexpr size_t n_vals = sizeof...(Vals);
+
+  /* Set datatype for global communication */
+  cs_datatype_t datatype = cs_datatype_from_type<T>();
+
+  /* Temporary work array and parallel sum */
+  if (n_vals == 0)
+    cs_parall_sum(ec, Stride, datatype, first);
+  else {
+    /* Unpack values */
+    T *_values[] = {values ...};
+
+    constexpr size_t work_size = (n_vals + 1) * Stride;
+
+    T w[work_size];
+    for (int i = 0; i < Stride; i++)
+      w[i] = first[i];
+
+    for (size_t i = 0; i < n_vals; i++)
+      for (int j = 0; j < Stride; j++)
+        w[(i+1)*Stride + j] = _values[i][j];
+
+    cs_parall_sum(ec, work_size, datatype, w);
+
+    for (int i = 0; i < Stride; i++)
+      first[i] = w[i];
+
+    for (size_t i = 0; i < n_vals; i++) {
+      for (int j = 0; j < Stride; j++)
+        _values[i][j] = w[(i+1)*Stride + j];
+    }
+  }
+
+#endif // defined(HAVE_MPI)
 }
 
 /*----------------------------------------------------------------------------*/
@@ -761,7 +1071,7 @@ static void
 cs_parall_sum_strided
 (
   T         first[], /*!< [in, out]  First scalar to update */
-  Vals&&... values   /*!< [in, out]  Additional scalars to update */
+  Vals&&... values   /*!< [in, out]  Additional values to update */
 )
 {
 #if defined(HAVE_MPI)
@@ -773,22 +1083,7 @@ cs_parall_sum_strided
   constexpr size_t n_vals = sizeof...(Vals);
 
   /* Set datatype for global communication */
-  cs_datatype_t datatype = CS_DATATYPE_NULL;
-
-  if (typeid(T) ==  typeid(int))
-    datatype = CS_INT_TYPE;
-  else if (typeid(T) ==  typeid(cs_lnum_t))
-    datatype = CS_LNUM_TYPE;
-  else if (typeid(T) ==  typeid(cs_gnum_t))
-    datatype = CS_GNUM_TYPE;
-  else if (typeid(T) == typeid(cs_flag_t))
-    datatype = CS_UINT16;
-  else if (typeid(T) ==  typeid(cs_real_t))
-    datatype = CS_REAL_TYPE;
-  else if (typeid(T) ==  typeid(double))
-    datatype = CS_DOUBLE;
-  else if (typeid(T) == typeid(cs_coord_t))
-    datatype = CS_COORD_TYPE;
+  cs_datatype_t datatype = cs_datatype_from_type<T>();
 
   /* Temporary work array and parallel sum */
   if (n_vals == 0)
@@ -818,7 +1113,7 @@ cs_parall_sum_strided
     }
   }
 
-#endif
+#endif // defined(HAVE_MPI)
 }
 
 /*----------------------------------------------------------------------------*/
@@ -847,22 +1142,7 @@ cs_parall_max_scalars
   constexpr size_t n_vals = sizeof...(Vals);
 
   /* Set datatype for global communication */
-  cs_datatype_t datatype = CS_DATATYPE_NULL;
-
-  if (typeid(T) ==  typeid(int))
-    datatype = CS_INT_TYPE;
-  else if (typeid(T) ==  typeid(cs_lnum_t))
-    datatype = CS_LNUM_TYPE;
-  else if (typeid(T) ==  typeid(cs_gnum_t))
-    datatype = CS_GNUM_TYPE;
-  else if (typeid(T) == typeid(cs_flag_t))
-    datatype = CS_UINT16;
-  else if (typeid(T) ==  typeid(cs_real_t))
-    datatype = CS_REAL_TYPE;
-  else if (typeid(T) ==  typeid(double))
-    datatype = CS_DOUBLE;
-  else if (typeid(T) == typeid(cs_coord_t))
-    datatype = CS_COORD_TYPE;
+  cs_datatype_t datatype = cs_datatype_from_type<T>();
 
   /* Temporary work array and parallel sum */
   if (n_vals == 0)
@@ -884,7 +1164,55 @@ cs_parall_max_scalars
       *(_values[i]) = w[i+1];
   }
 
-#endif
+#endif // defined(HAVE_MPI)
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Maximum values of a given datatype over a communicator.
+ *
+ * \tparam T : datatype
+ */
+/*----------------------------------------------------------------------------*/
+
+template <typename T, typename... Vals>
+static void
+cs_parall_max_scalars
+(
+  cs_execution_context  *ec,    /*!< [in] Parallel execution context */
+  T&                     first, /*!< [in, out]  First scalar to update */
+  Vals&...               values /*!< [in, out]  Additional scalars to update */
+)
+{
+#if defined(HAVE_MPI)
+
+  /* Count number of values */
+  constexpr size_t n_vals = sizeof...(Vals);
+
+  /* Set datatype for global communication */
+  cs_datatype_t datatype = cs_datatype_from_type<T>();
+
+  /* Temporary work array and parallel sum */
+  if (n_vals == 0)
+    cs_parall_max(ec, 1, datatype, &first);
+  else {
+
+    /* Unpack values */
+    T *_values[] = {&values ...};
+
+    T w[n_vals + 1];
+    w[0] = first;
+    for (size_t i = 0; i < n_vals; i++)
+      w[i+1] = *(_values[i]);
+
+    cs_parall_max(ec, n_vals + 1, datatype, w);
+
+    first = w[0];
+    for (size_t i = 0; i < n_vals; i++)
+      *(_values[i]) = w[i+1];
+  }
+
+#endif // defined(HAVE_MPI)
 }
 
 /*----------------------------------------------------------------------------*/
@@ -902,7 +1230,7 @@ static void
 cs_parall_max_strided
 (
   T         first[], /*!< [in, out]  First scalar to update */
-  Vals&&... values   /*!< [in, out]  Additional scalars to update */
+  Vals&&... values   /*!< [in, out]  Additional values to update */
 )
 {
 #if defined(HAVE_MPI)
@@ -914,22 +1242,7 @@ cs_parall_max_strided
   constexpr size_t n_vals = sizeof...(Vals);
 
   /* Set datatype for global communication */
-  cs_datatype_t datatype = CS_DATATYPE_NULL;
-
-  if (typeid(T) ==  typeid(int))
-    datatype = CS_INT_TYPE;
-  else if (typeid(T) ==  typeid(cs_lnum_t))
-    datatype = CS_LNUM_TYPE;
-  else if (typeid(T) ==  typeid(cs_gnum_t))
-    datatype = CS_GNUM_TYPE;
-  else if (typeid(T) == typeid(cs_flag_t))
-    datatype = CS_UINT16;
-  else if (typeid(T) ==  typeid(cs_real_t))
-    datatype = CS_REAL_TYPE;
-  else if (typeid(T) ==  typeid(double))
-    datatype = CS_DOUBLE;
-  else if (typeid(T) == typeid(cs_coord_t))
-    datatype = CS_COORD_TYPE;
+  cs_datatype_t datatype = cs_datatype_from_type<T>();
 
   /* Temporary work array and parallel sum */
   if (n_vals == 0)
@@ -958,7 +1271,63 @@ cs_parall_max_strided
         _values[i][j] = w[(i+1)*Stride + j];
   }
 
-#endif
+#endif // defined(HAVE_MPI)
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Maximum values of a given datatype over a communicator.
+ *
+ * \tparam T      : datatype
+ * \tparam stride : stride/dimension of values
+ */
+/*----------------------------------------------------------------------------*/
+
+template <int Stride, typename T, typename... Vals>
+static void
+cs_parall_max_strided
+(
+  cs_execution_context  *ec,      /*!< [in] Parallel execution context */
+  T                      first[], /*!< [in, out]  First scalar to update */
+  Vals&&...              values   /*!< [in, out]  Additional values to update */
+)
+{
+#if defined(HAVE_MPI)
+
+  /* Count number of values */
+  constexpr size_t n_vals = sizeof...(Vals);
+
+  /* Set datatype for global communication */
+  cs_datatype_t datatype = cs_datatype_from_type<T>();
+
+  /* Temporary work array and parallel sum */
+  if (n_vals == 0)
+    cs_parall_max(ec, Stride, datatype, first);
+  else {
+    /* Unpack values */
+    T *_values[] = {values ...};
+
+    constexpr size_t work_size = (n_vals + 1) * Stride;
+
+    T w[work_size];
+    for (int i = 0; i < Stride; i++)
+      w[i] = first[i];
+
+    for (size_t i = 0; i < n_vals; i++)
+      for (int j = 0; j < Stride; j++)
+        w[(i+1)*Stride + j] = _values[i][j];
+
+    cs_parall_max(ec, work_size, datatype, w);
+
+    for (int i = 0; i < Stride; i++)
+      first[i] = w[i];
+
+    for (size_t i = 0; i < n_vals; i++)
+      for (int j = 0; j < Stride; j++)
+        _values[i][j] = w[(i+1)*Stride + j];
+  }
+
+#endif // defined(HAVE_MPI)
 }
 
 /*----------------------------------------------------------------------------*/
@@ -987,22 +1356,7 @@ cs_parall_min_scalars
   constexpr size_t n_vals = sizeof...(Vals);
 
   /* Set datatype for global communication */
-  cs_datatype_t datatype = CS_DATATYPE_NULL;
-
-  if (typeid(T) ==  typeid(int))
-    datatype = CS_INT_TYPE;
-  else if (typeid(T) ==  typeid(cs_lnum_t))
-    datatype = CS_LNUM_TYPE;
-  else if (typeid(T) ==  typeid(cs_gnum_t))
-    datatype = CS_GNUM_TYPE;
-  else if (typeid(T) == typeid(cs_flag_t))
-    datatype = CS_UINT16;
-  else if (typeid(T) ==  typeid(cs_real_t))
-    datatype = CS_REAL_TYPE;
-  else if (typeid(T) ==  typeid(double))
-    datatype = CS_DOUBLE;
-  else if (typeid(T) == typeid(cs_coord_t))
-    datatype = CS_COORD_TYPE;
+  cs_datatype_t datatype = cs_datatype_from_type<T>();
 
   if (n_vals == 0)
     cs_parall_min(1, datatype, &first);
@@ -1025,7 +1379,56 @@ cs_parall_min_scalars
       *(_values[i]) = w[i + 1];
   }
 
-#endif
+#endif // defined(HAVE_MPI)
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Minimum values of a given datatype over a communicator.
+ *
+ * \tparam T : datatype
+ */
+/*----------------------------------------------------------------------------*/
+
+template <typename T, typename... Vals>
+static void
+cs_parall_min_scalars
+(
+  cs_execution_context  *ec,     /*!< [in] Parallel execution context */
+  T&                     first,  /*!< [in, out]  First scalar to update */
+  Vals&...               values  /*!< [in, out]  Additional scalar to update */
+)
+{
+#if defined(HAVE_MPI)
+
+  /* Count number of values */
+  constexpr size_t n_vals = sizeof...(Vals);
+
+  /* Set datatype for global communication */
+  cs_datatype_t datatype = cs_datatype_from_type<T>();
+
+  if (n_vals == 0)
+    cs_parall_min(ec, 1, datatype, &first);
+
+  else {
+    /* Temporary work array and parallel sum */
+
+    /* Unpack values */
+    T *_values[] = {&values ...};
+
+    T w[n_vals + 1];
+    w[0] = first;
+    for (size_t i = 0; i < n_vals; i++)
+      w[i + 1] = *(_values[i]);
+
+    cs_parall_min(ec, n_vals + 1, datatype, w);
+
+    first = w[0];
+    for (size_t i = 0; i < n_vals; i++)
+      *(_values[i]) = w[i + 1];
+  }
+
+#endif // defined(HAVE_MPI)
 }
 
 /*----------------------------------------------------------------------------*/
@@ -1042,8 +1445,8 @@ template <int Stride, typename T, typename... Vals>
 static void
 cs_parall_min_strided
 (
-  T         first[], /*!< [in, out]  First scalar to update */
-  Vals&&... values   /*!< [in, out]  Additional scalars to update */
+  T         first[],  /*!< [in, out]  First value to update */
+  Vals&&... values    /*!< [in, out]  Additional values to update */
 )
 {
 #if defined(HAVE_MPI)
@@ -1055,22 +1458,7 @@ cs_parall_min_strided
   constexpr size_t n_vals = sizeof...(Vals);
 
   /* Set datatype for global communication */
-  cs_datatype_t datatype = CS_DATATYPE_NULL;
-
-  if (typeid(T) ==  typeid(int))
-    datatype = CS_INT_TYPE;
-  else if (typeid(T) ==  typeid(cs_lnum_t))
-    datatype = CS_LNUM_TYPE;
-  else if (typeid(T) ==  typeid(cs_gnum_t))
-    datatype = CS_GNUM_TYPE;
-  else if (typeid(T) == typeid(cs_flag_t))
-    datatype = CS_UINT16;
-  else if (typeid(T) ==  typeid(cs_real_t))
-    datatype = CS_REAL_TYPE;
-  else if (typeid(T) ==  typeid(double))
-    datatype = CS_DOUBLE;
-  else if (typeid(T) == typeid(cs_coord_t))
-    datatype = CS_COORD_TYPE;
+  cs_datatype_t datatype = cs_datatype_from_type<T>();
 
   /* Temporary work array and parallel sum */
   if (n_vals == 0)
@@ -1101,6 +1489,63 @@ cs_parall_min_strided
 
 #endif
 }
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Minimum values of a given datatype over a communicator.
+ *
+ * \tparam T      : datatype
+ * \tparam stride : stride/dimension of values
+ */
+/*----------------------------------------------------------------------------*/
+
+#if defined(HAVE_MPI)
+
+template <int Stride, typename T, typename... Vals>
+static void
+cs_parall_min_strided
+(
+  cs_execution_context  *ec,      /*!< [in] Parallel execution context */
+  T                      first[], /*!< [in, out]  First value to update */
+  Vals&&...              values   /*!< [in, out]  Additional values to update */
+)
+{
+  /* Count number of values */
+  constexpr size_t n_vals = sizeof...(Vals);
+
+  /* Set datatype for global communication */
+  cs_datatype_t datatype = cs_datatype_from_type<T>();
+
+  /* Temporary work array and parallel sum */
+  if (n_vals == 0)
+    cs_parall_min(ec, Stride, datatype, first);
+
+  else {
+    /* Unpack values */
+    T *_values[] = {values ...};
+
+    constexpr size_t work_size = (n_vals + 1) * Stride;
+
+    T w[work_size];
+    for (int i = 0; i < Stride; i++)
+      w[i] = first[i];
+
+    for (size_t i = 0; i < n_vals; i++)
+      for (int j = 0; j < Stride; j++)
+        w[(i+1)*Stride + j] = _values[i][j];
+
+    cs_parall_min(ec, work_size, datatype, w);
+
+    for (int i = 0; i < Stride; i++)
+      first[i] = w[i];
+
+    for (size_t i = 0; i < n_vals; i++)
+      for (int j = 0; j < Stride; j++)
+        _values[i][j] = w[(i+1)*Stride + j];
+  }
+}
+
+#endif // defined(HAVE_MPI)
 
 #endif //__cplusplus
 

@@ -70,7 +70,7 @@ implicit none
 
 ! Local variables
 
-integer          f_id
+integer          f_id, scal_id
 integer          kscmin, kscmax
 
 double precision scmaxp, scminp
@@ -81,15 +81,17 @@ double precision scmaxp, scminp
 
 interface
 
+  subroutine cs_cf_add_variable_fields() &
+    bind(C, name='cs_cf_add_variable_fields')
+    use, intrinsic :: iso_c_binding
+    implicit none
+  end subroutine cs_cf_add_variable_fields
+
   subroutine cs_elec_add_variable_fields()  &
     bind(C, name='cs_elec_add_variable_fields')
     use, intrinsic :: iso_c_binding
     implicit none
   end subroutine cs_elec_add_variable_fields
-
-end interface
-
-interface
 
   subroutine cs_field_pointer_map_gas_mix()  &
     bind(C, name='cs_field_pointer_map_gas_mix')
@@ -97,29 +99,11 @@ interface
     implicit none
   end subroutine cs_field_pointer_map_gas_mix
 
-end interface
-
-interface
-
-  subroutine cs_field_pointer_map_groundwater()  &
-    bind(C, name='cs_field_pointer_map_groundwater')
-    use, intrinsic :: iso_c_binding
-    implicit none
-  end subroutine cs_field_pointer_map_groundwater
-
-end interface
-
-interface
-
   subroutine cs_ctwr_add_variable_fields()  &
     bind(C, name='cs_ctwr_add_variable_fields')
     use, intrinsic :: iso_c_binding
     implicit none
   end subroutine cs_ctwr_add_variable_fields
-
-end interface
-
-interface
 
   subroutine cs_rad_transfer_add_variable_fields()  &
     bind(C, name='cs_rad_transfer_add_variable_fields')
@@ -177,7 +161,11 @@ endif
 !----------------------
 
 if (ippmod(icompf).ge.0) then
-  call cfvarp
+  call cs_cf_add_variable_fields
+
+  ! Fortran field mappings
+  call map_variable_field_try('total_energy', ienerg)
+  call map_variable_field_try('temperature', itempk)
 endif
 
 ! 4. Electric arcs model
@@ -231,31 +219,31 @@ if (ippmod(igmix).ge.0) then
   scmaxp = 1.d0
 
   if (ippmod(igmix).lt.5) then
-    call add_model_scalar_field('y_o2', 'Y_O2', iscasp(1))
-    f_id = ivarfl(isca(iscasp(1)))
+    call add_model_scalar_field('y_o2', 'Y_O2', scal_id)
+    f_id = ivarfl(isca(scal_id))
     call gas_mix_add_species(f_id)
     call field_set_key_int(f_id, kivisl, 0)
     call field_set_key_double(f_id, kscmin, scminp)
     call field_set_key_double(f_id, kscmax, scmaxp)
 
-    call add_model_scalar_field('y_n2', 'Y_N2', iscasp(2))
-    f_id = ivarfl(isca(iscasp(2)))
+    call add_model_scalar_field('y_n2', 'Y_N2', scal_id)
+    f_id = ivarfl(isca(scal_id))
     call gas_mix_add_species(f_id)
     call field_set_key_int(f_id, kivisl, 0)
     call field_set_key_double(f_id, kscmin, scminp)
     call field_set_key_double(f_id, kscmax, scmaxp)
 
     if (ippmod(igmix).eq.3) then
-      call add_model_scalar_field('y_he', 'Y_He', iscasp(3))
-      f_id = ivarfl(isca(iscasp(3)))
+      call add_model_scalar_field('y_he', 'Y_He', scal_id)
+      f_id = ivarfl(isca(scal_id))
       call gas_mix_add_species(f_id)
       call field_set_key_int(f_id, kivisl, 0)
       call field_set_key_double(f_id, kscmin, scminp)
       call field_set_key_double(f_id, kscmax, scmaxp)
 
     elseif (ippmod(igmix).eq.4) then
-      call add_model_scalar_field('y_h2', 'Y_H2', iscasp(3))
-      f_id = ivarfl(isca(iscasp(3)))
+      call add_model_scalar_field('y_h2', 'Y_H2', scal_id)
+      f_id = ivarfl(isca(scal_id))
       call gas_mix_add_species(f_id)
       call field_set_key_int(f_id, kivisl, 0)
       call field_set_key_double(f_id, kscmin, scminp)
@@ -264,15 +252,15 @@ if (ippmod(igmix).ge.0) then
     endif
   else ! ippmod(igmix).eq.5
 
-    call add_model_scalar_field('y_n2', 'Y_N2', iscasp(1))
-    f_id = ivarfl(isca(iscasp(1)))
+    call add_model_scalar_field('y_n2', 'Y_N2', scal_id)
+    f_id = ivarfl(isca(scal_id))
     call gas_mix_add_species(f_id)
     call field_set_key_int(f_id, kivisl, 0)
     call field_set_key_double(f_id, kscmin, scminp)
     call field_set_key_double(f_id, kscmax, scmaxp)
 
-    call add_model_scalar_field('y_he', 'Y_He', iscasp(2))
-    f_id = ivarfl(isca(iscasp(2)))
+    call add_model_scalar_field('y_he', 'Y_He', scal_id)
+    f_id = ivarfl(isca(scal_id))
     call gas_mix_add_species(f_id)
     call field_set_key_int(f_id, kivisl, 0)
     call field_set_key_double(f_id, kscmin, scminp)

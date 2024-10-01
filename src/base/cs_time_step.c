@@ -293,15 +293,7 @@ cs_f_time_step_get_pointers(int     **nt_prev,
                             double  **t_max);
 
 void
-cs_f_time_step_options_get_pointers(int    **iptlro,
-                                    int    **idtvar,
-                                    double **coumax,
-                                    double **cflmmx,
-                                    double **foumax,
-                                    double **varrdt,
-                                    double **dtmin,
-                                    double **dtmax,
-                                    double **relxst);
+cs_f_time_step_options_get_pointers(int  **idtvar);
 
 /*============================================================================
  * Private function definitions
@@ -355,37 +347,13 @@ cs_f_time_step_get_pointers(int      **nt_prev,
  * enables mapping to Fortran global pointers.
  *
  * parameters:
- *   iptlro --> pointer to cs_glob_time_step_options->iptlro
  *   idtvar --> pointer to cs_glob_time_step_options->idtvar
- *   coumax --> pointer to cs_glob_time_step_options->coumax
- *   cflmmx --> pointer to cs_glob_time_step_options->cflmmx
- *   foumax --> pointer to cs_glob_time_step_options->foumax
- *   varrdt --> pointer to cs_glob_time_step_options->varrdt
- *   dtmin  --> pointer to cs_glob_time_step_options->dtmin
- *   dtmax  --> pointer to cs_glob_time_step_options->dtmax
- *   relxst --> pointer to cs_glob_time_step_options->relxst
  *----------------------------------------------------------------------------*/
 
 void
-cs_f_time_step_options_get_pointers(int    **iptlro,
-                                    int    **idtvar,
-                                    double **coumax,
-                                    double **cflmmx,
-                                    double **foumax,
-                                    double **varrdt,
-                                    double **dtmin,
-                                    double **dtmax,
-                                    double **relxst)
+cs_f_time_step_options_get_pointers(int  **idtvar)
 {
-  *iptlro = &(_time_step_options.iptlro);
   *idtvar = &(_time_step_options.idtvar);
-  *coumax = &(_time_step_options.coumax);
-  *cflmmx = &(_time_step_options.cflmmx);
-  *foumax = &(_time_step_options.foumax);
-  *varrdt = &(_time_step_options.varrdt);
-  *dtmin  = &(_time_step_options.dtmin );
-  *dtmax  = &(_time_step_options.dtmax );
-  *relxst = &(_time_step_options.relxst);
 }
 
 /*=============================================================================
@@ -678,7 +646,7 @@ cs_time_step_log_setup(void)
 
       cs_log_printf
         (CS_LOG_SETUP,
-         _("  Time step parameters:\n"
+         _("  Time step parameters:\n\n"
            "    idtvar: %21s (%s)\n"
            "    iptlro:     %17d (1: rho-related DT clipping)\n"
            "    coumax:     %17.5g (Maximum target CFL)\n"

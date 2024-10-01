@@ -1859,7 +1859,7 @@ class Studies(object):
                     if self.__mem_log and mem_log_leak:
                         self.reporting('    - run %s --> Leaks in memory logs' \
                                        % (case.title))
-                        self.reporting('      * see cs_mem.log(.N) in ' \
+                        self.reporting('      * see cs_mem.log(.N) in %s' \
                                        % (case.run_dir))
                     self.__log_file.flush()
 
@@ -1901,7 +1901,7 @@ class Studies(object):
 
     #---------------------------------------------------------------------------
 
-    def run_slurm_batches(self):
+    def run_slurm_batches(self, state_file_name):
         """
         Run all cases in slurm batch mode.
         The number of case per batch is limited by a maximum number and a maximum
@@ -2099,11 +2099,18 @@ class Studies(object):
         # fill file with template
         cmd = slurm_batch_template.format(1, 0, 10, cur_batch_id)
 
+        # add user defined options if needed
+        if self.__slurm_batch_args:
+            for _p in self.__slurm_batch_args:
+                cmd += "#SBATCH " + _p + "\n"
+
         cmd += "\n"
         slurm_batch_file.write(cmd)
 
         # fill file with batch command for state analysis
-        batch_cmd += self.build_final_batch(self.__postpro, self.__compare)
+        batch_cmd += self.build_final_batch(self.__postpro,
+                                            self.__compare,
+                                            state_file_name)
         slurm_batch_file.write(batch_cmd)
         slurm_batch_file.flush()
 
@@ -2127,7 +2134,7 @@ class Studies(object):
 
     #---------------------------------------------------------------------------
 
-    def build_final_batch(self, postpro, compare):
+    def build_final_batch(self, postpro, compare, state_file_name):
         """
         Launch state option in DESTINATION
         """
@@ -2140,7 +2147,8 @@ class Studies(object):
         final_cmd += e + " smgr --state" \
                        + " -f " + self.__filename \
                        + " --repo " + self.__repo \
-                       + " --dest " + self.__dest
+                       + " --dest " + self.__dest \
+                       + " --state-file " + state_file_name
         if postpro:
            final_cmd += " --post"
         if compare:
@@ -2158,7 +2166,7 @@ class Studies(object):
 
     #---------------------------------------------------------------------------
 
-    def report_state(self):
+    def report_state(self, state_file_name):
         """
         Report state of all cases.
         Warning, if the markup of the case is repeated in the xml file of parameters,
@@ -2172,7 +2180,6 @@ class Studies(object):
         s_prev = ""
         c_prev = ""
 
-        detailed_file_name = "state_detailed"
         add_header_and_footer = True
 
         colors = {case_state.UNKNOWN: "rgb(227,218,201)",
@@ -2197,7 +2204,7 @@ class Studies(object):
                     case_state.EXCEEDED_TIME_LIMIT: "Time limit",
                     case_state.FAILED: "FAILED"}
 
-        fd = open(detailed_file_name, 'w')
+        fd = open(state_file_name, 'w')
 
         if add_header_and_footer:
             fd.write("<html>\n")

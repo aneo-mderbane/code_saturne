@@ -68,6 +68,14 @@ BEGIN_C_DECLS
  * Porosity from scan model options descriptor
  *----------------------------------------------------------------------------*/
 
+typedef enum {
+
+  CS_COG_FROM_FLUID_FACES = 0,
+  CS_COG_FROM_PYRAMID = 1,
+  CS_COG_WITHOUT_RECONSTRUCTION_FOR_IBM_PLANE = 2
+
+} cs_ibm_cog_location_t;
+
 typedef struct {
   bool  compute_porosity_from_scan;
   char *file_names;
@@ -84,6 +92,11 @@ typedef struct {
   cs_lnum_t threshold;
   cs_real_t porosity_threshold;
   cs_real_t convection_porosity_threshold;
+  bool      use_staircase;
+  cs_real_t eigenvalue_criteria;
+  int       use_restart;
+  cs_ibm_cog_location_t cog_location;
+
 } cs_porosity_from_scan_opt_t;
 
 /*============================================================================
@@ -175,6 +188,26 @@ cs_ibm_add_sources_by_file_name(const char *file_name);
 
 void
 cs_compute_porosity_from_scan(void);
+
+/*----------------------------------------------------------------------------*/
+
+/*--------------------------------------------------------------------*/
+/*
+ * \brief Write the restart file of the ibm module
+ */
+/*--------------------------------------------------------------------*/
+
+void
+cs_porous_model_write(void);
+
+/*--------------------------------------------------------------------*/
+/*
+ * \brief Read the restart file of the ibm module
+ */
+/*--------------------------------------------------------------------*/
+
+void
+cs_porous_model_read(void);
 
 /*----------------------------------------------------------------------------*/
 

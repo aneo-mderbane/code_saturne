@@ -126,7 +126,7 @@ static const char _err_empty_prcdo[] =
 
 static bool cs_pressure_correction_cdo_active = false;
 
-static cs_pressure_correction_cdo_t *cs_pressure_correction_cdo = NULL;
+static cs_pressure_correction_cdo_t *cs_pressure_correction_cdo = nullptr;
 
 /*============================================================================
  * Private function definitions
@@ -251,7 +251,7 @@ _hydrostatic_pressure_compute(const cs_mesh_t       *m,
   cs_real_3_t *next_fext;
   CS_MALLOC_HD(next_fext, n_cells_ext, cs_real_3_t, cs_alloc_mode);
 
-  cs_real_t *rovsdt = NULL, *viscce = NULL;
+  cs_real_t *rovsdt = nullptr, *viscce = nullptr;
   CS_MALLOC_HD(rovsdt, n_cells_ext, cs_real_t, cs_alloc_mode);
   CS_MALLOC_HD(viscce, n_cells_ext, cs_real_t, cs_alloc_mode);
 
@@ -307,7 +307,7 @@ _hydrostatic_pressure_compute(const cs_mesh_t       *m,
                            bflux,
                            i_visc,
                            b_visc,
-                           NULL,
+                           nullptr,
                            dam,
                            xam);
 
@@ -329,7 +329,7 @@ _hydrostatic_pressure_compute(const cs_mesh_t       *m,
                     viscce,
                     viscce);
 
-  cs_real_t *div_fext = NULL;
+  cs_real_t *div_fext = nullptr;
   CS_MALLOC_HD(div_fext, n_cells_ext, cs_real_t, cs_alloc_mode);
 
   cs_divergence(m, 1, iflux, bflux, div_fext);
@@ -397,7 +397,7 @@ _hydrostatic_pressure_compute(const cs_mesh_t       *m,
     cs_real_t ressol = residual;
 
     cs_sles_solve_native(f->id,
-                         NULL,
+                         nullptr,
                          true,  /* symmetric */
                          1,     /* diag_block_size */
                          1,     /* extra_diag_block_size */
@@ -436,7 +436,7 @@ _hydrostatic_pressure_compute(const cs_mesh_t       *m,
 
   /* Free Memory and solver setup */
 
-  cs_sles_free_native(f->id, NULL);
+  cs_sles_free_native(f->id, nullptr);
 
   CS_FREE_HD(viscce);
   CS_FREE_HD(rovsdt);
@@ -526,16 +526,16 @@ _pressure_correction_fv(int                   iterns,
   const cs_lnum_t n_b_faces = m->n_b_faces;
 
   const cs_lnum_2_t *restrict i_face_cells
-    = (const cs_lnum_2_t *restrict)m->i_face_cells;
+    = (const cs_lnum_2_t *)m->i_face_cells;
   const cs_lnum_t *restrict b_face_cells
-    = (const cs_lnum_t *restrict)m->b_face_cells;
+    = (const cs_lnum_t *)m->b_face_cells;
 
   const cs_real_3_t *restrict cell_cen
-    = (const cs_real_3_t *restrict)fvq->cell_cen;
+    = (const cs_real_3_t *)fvq->cell_cen;
   const cs_real_3_t *restrict b_face_cog
-    = (const cs_real_3_t *restrict)fvq->b_face_cog;
+    = (const cs_real_3_t *)fvq->b_face_cog;
   const cs_real_3_t *restrict b_face_normal
-    = (const cs_real_3_t *restrict)fvq->b_face_normal;
+    = (const cs_real_3_t *)fvq->b_face_normal;
   const cs_real_t *restrict b_dist = (const cs_real_t *)fvq->b_dist;
   const cs_real_t *restrict b_face_surf = fvq->b_face_surf;
   const cs_real_t *restrict i_f_face_surf = fvq->i_f_face_surf;
@@ -590,13 +590,13 @@ _pressure_correction_fv(int                   iterns,
 
   cs_real_t *restrict dt = CS_F_(dt)->val;
 
-  cs_real_t *cvar_hydro_pres = NULL, *cvar_hydro_pres_prev = NULL;
-  cs_real_t *c_visc = NULL;
-  cs_real_6_t *vitenp = NULL;
-  cs_real_t *taui = NULL, *taub = NULL;
+  cs_real_t *cvar_hydro_pres = nullptr, *cvar_hydro_pres_prev = nullptr;
+  cs_real_t *c_visc = nullptr;
+  cs_real_6_t *vitenp = nullptr;
+  cs_real_t *taui = nullptr, *taub = nullptr;
 
   cs_field_t  *f_hp = cs_field_by_name_try("hydrostatic_pressure");
-  if (f_hp != NULL) {
+  if (f_hp != nullptr) {
     cvar_hydro_pres = f_hp->vals[0];
     cvar_hydro_pres_prev = f_hp->vals[1];
   }
@@ -620,7 +620,7 @@ _pressure_correction_fv(int                   iterns,
   cs_real_3_t *wrk2;
   CS_MALLOC_HD(wrk2, n_cells_ext, cs_real_3_t, cs_alloc_mode);
 
-  cs_real_t *adxk = NULL, *adxkm1 = NULL, *dphim1 = NULL, *rhs0 = NULL;
+  cs_real_t *adxk = nullptr, *adxkm1 = nullptr, *dphim1 = nullptr, *rhs0 = nullptr;
   if (eqp_p->iswdyn > 0) {
     CS_MALLOC_HD(adxk, n_cells_ext, cs_real_t, cs_alloc_mode);
     CS_MALLOC_HD(adxkm1, n_cells_ext, cs_real_t, cs_alloc_mode);
@@ -638,17 +638,17 @@ _pressure_correction_fv(int                   iterns,
   cs_solving_info_t *sinfo
     = static_cast<cs_solving_info_t*>(cs_field_get_key_struct_ptr(f_p, ksinfo));
 
-  cs_field_t *f_weight = NULL;
+  cs_field_t *f_weight = nullptr;
   if (eqp_p->iwgrec == 1) {
     /* Weighting field for gradient */
     int kwgrec = cs_field_key_id("gradient_weighting_id");
     f_weight = cs_field_by_id(cs_field_get_key_int(f_p, kwgrec));
   }
 
-  cs_real_t *cpro_divu = NULL, *_cpro_divu = NULL;
-  cs_field_t *f_divu =
-    cs_field_by_name_try("algo:divergence_predicted_velocity");
-  if (f_divu != NULL)
+  cs_real_t *cpro_divu = nullptr, *_cpro_divu = nullptr;
+  cs_field_t *f_divu
+    = cs_field_by_name_try("algo:predicted_velocity_divergence");
+  if (f_divu != nullptr)
     cpro_divu = f_divu->val;
   else {
     CS_MALLOC_HD(_cpro_divu, n_cells_ext, cs_real_t, cs_alloc_mode);
@@ -665,22 +665,22 @@ _pressure_correction_fv(int                   iterns,
 
   /* Physical quantities */
 
-  cs_real_t *crom = NULL;
-  const cs_real_t *brom = NULL;
+  cs_real_t *crom = nullptr;
+  const cs_real_t *brom = nullptr;
 
   cs_real_t *crom_eos = CS_F_(rho)->val;
-  const cs_real_t *croma = NULL;
+  const cs_real_t *croma = nullptr;
   if (vp_param->icalhy == 1 || idilat > 1 || fluid_props->irovar) {
     croma = CS_F_(rho)->val_pre;
   }
   const cs_real_t *brom_eos = CS_F_(rho_b)->val;
-  const cs_real_t *broma = NULL;
+  const cs_real_t *broma = nullptr;
   if (fluid_props->irovar)
     broma = CS_F_(rho_b)->val_pre;
 
   /* Time-interpolated density */
 
-  cs_real_t *cpro_rho_tc = NULL, *bpro_rho_tc = NULL;
+  cs_real_t *cpro_rho_tc = nullptr, *bpro_rho_tc = nullptr;
 
   if (fluid_props->irovar && (   idilat > 1
                               || vof_parameters->vof_model > 0
@@ -765,8 +765,8 @@ _pressure_correction_fv(int                   iterns,
 
   /* Calculation of dt/rho */
 
-  cs_real_t *xdtsro = NULL;
-  cs_real_6_t *tpusro = NULL;
+  cs_real_t *xdtsro = nullptr;
+  cs_real_6_t *tpusro = nullptr;
 
   if (vof_parameters->vof_model > 0 || idilat == 4) {
 
@@ -803,6 +803,8 @@ _pressure_correction_fv(int                   iterns,
 
   if (vp_param->staggered == 1) {
 
+    cs_halo_sync_var(m->halo, CS_HALO_STANDARD, dt);
+
     const cs_real_t *hli = cs_field_by_name("inner_face_head_loss")->val;
     const cs_real_t *hlb = cs_field_by_name("boundary_face_head_loss")->val;
 
@@ -822,9 +824,6 @@ _pressure_correction_fv(int                   iterns,
       taub[f_id] = dt[c_id] / (1. + hlb[f_id] * dt[c_id]);
     });
 
-    ctx_c.wait();
-    cs_halo_sync_var(m->halo, CS_HALO_STANDARD, taui);
-
   }
 
   /* Compute an approximated pressure increment if needed,
@@ -834,9 +833,7 @@ _pressure_correction_fv(int                   iterns,
 
   /* Standard initialization */
 
-  ctx.parallel_for(n_i_faces, [=] CS_F_HOST_DEVICE (cs_lnum_t f_id) {
-    iflux[f_id] = 0.;
-  });
+  cs_arrays_set_value<cs_real_t, 1>(n_i_faces, 0., iflux);
 
   if (vp_param->staggered == 0) {
     ctx_c.parallel_for(n_b_faces, [=] CS_F_HOST_DEVICE (cs_lnum_t f_id) {
@@ -891,7 +888,7 @@ _pressure_correction_fv(int                   iterns,
 
     cs_real_t phydr0 = 0.;
 
-    if (f_hp != NULL && indhyd == 1) {
+    if (f_hp != nullptr && indhyd == 1) {
 
       cs_lnum_t f_id_0 = isostd[n_b_faces] - 1;
       if (f_id_0 > -1) {
@@ -988,7 +985,7 @@ _pressure_correction_fv(int                   iterns,
           }
 
           if (indhyd == 1) {
-            if (f_hp != NULL) {
+            if (f_hp != nullptr) {
               coefa_dp[f_id] =   cvar_hydro_pres[c_id]
                                - cvar_hydro_pres_prev[c_id];
             }
@@ -1058,11 +1055,7 @@ _pressure_correction_fv(int                   iterns,
   cs_real_t *rovsdt;
   CS_MALLOC_HD(rovsdt, n_cells_ext, cs_real_t, cs_alloc_mode);
 
-  ctx.parallel_for(n_cells_ext, [=] CS_F_HOST_DEVICE (cs_lnum_t c_id) {
-    rovsdt[c_id] = 0.;
-  });
-
-  ctx.wait();
+  cs_arrays_set_value<cs_real_t, 1>(n_cells_ext, 0., rovsdt);
 
   /* Compressible scheme implicit part;
      Getting the thermal parameters */
@@ -1071,11 +1064,11 @@ _pressure_correction_fv(int                   iterns,
   int thermal_variable = cs_glob_thermal_model->thermal_variable;
   int kinetic_st = cs_glob_thermal_model->has_kinetic_st;
 
-  const cs_real_t *temp = NULL;
-  cs_real_t *xcpp = NULL, *dc2 = NULL;
-  cs_real_t *cvar_th = NULL, *tempk = NULL;
+  const cs_real_t *temp = nullptr;
+  cs_real_t *xcpp = nullptr, *dc2 = nullptr;
+  cs_real_t *cvar_th = nullptr, *tempk = nullptr;
   cs_real_t _coef = 0;
-  cs_real_t *yw = NULL, *yv = NULL;
+  cs_real_t *yw = nullptr, *yv = nullptr;
 
   if (idilat == 2) {
 
@@ -1084,13 +1077,13 @@ _pressure_correction_fv(int                   iterns,
       temp = CS_F_(t)->val;
     else {
       const cs_field_t *f_t = cs_field_by_name_try("temperature");
-      if (f_t != NULL) {
+      if (f_t != nullptr) {
         tempk = f_t->val;
         temp = f_t->val;
       }
     }
 
-    if (temp != NULL) {
+    if (temp != nullptr) {
 
       cvar_th = CS_F_(t)->val;
 
@@ -1121,7 +1114,7 @@ _pressure_correction_fv(int                   iterns,
         yw = cs_field_by_name("yw")->val;
         yv = cs_field_by_name("yv")->val;
       }
-      cs_real_t *cvar_fracm = NULL;
+      cs_real_t *cvar_fracm = nullptr;
 
       /* Compute dc2 */
       cs_thermal_model_c_square(xcpp,
@@ -1143,7 +1136,7 @@ _pressure_correction_fv(int                   iterns,
 
   /* Implicit part of the cavitation source */
   if (i_vof_mass_transfer != 0 && cavitation_parameters->itscvi == 1) {
-    cs_real_t *dgdpca = cs_get_cavitation_dgdp_st();
+    cs_real_t *dgdpca = cs_field_by_name("model:cavitation_st_dgdp")->val;
     cs_real_t rho1 = vof_parameters->rho1;
     cs_real_t rho2 = vof_parameters->rho2;
 
@@ -1160,16 +1153,16 @@ _pressure_correction_fv(int                   iterns,
     });
   }
 
-  cs_real_t *c2 = NULL;
+  cs_real_t *c2 = nullptr;
 
   if (compressible_flag == 3) {
 
-    cs_real_t *cvar_fracv = NULL;
-    cs_real_t *cvar_fracm = NULL;
-    cs_real_t *cvar_frace = NULL;
+    cs_real_t *cvar_fracv = nullptr;
+    cs_real_t *cvar_fracm = nullptr;
+    cs_real_t *cvar_frace = nullptr;
 
-    cs_real_t *cpro_cp = NULL;
-    cs_real_t *cpro_cv = NULL;
+    cs_real_t *cpro_cp = nullptr;
+    cs_real_t *cpro_cv = nullptr;
 
     if (fluid_props->icp >= 0)
       cpro_cp = cs_field_by_id(fluid_props->icp)->val;
@@ -1193,8 +1186,8 @@ _pressure_correction_fv(int                   iterns,
 
   /* Face diffusivity */
 
-  cs_real_t *weighb = NULL;
-  cs_real_2_t *weighf = NULL;
+  cs_real_t *weighb = nullptr;
+  cs_real_2_t *weighf = nullptr;
 
   if (eqp_p->idiff >= 1) {
 
@@ -1208,7 +1201,7 @@ _pressure_correction_fv(int                   iterns,
                         i_visc,
                         b_visc);
 
-      if (f_weight != NULL) {  /* Weighting for gradient */
+      if (f_weight != nullptr) {  /* Weighting for gradient */
         cs_real_t *weight = f_weight->val;
 
         ctx.parallel_for(n_cells, [=] CS_F_HOST_DEVICE (cs_lnum_t c_id) {
@@ -1216,7 +1209,7 @@ _pressure_correction_fv(int                   iterns,
         });
         ctx.wait();
 
-        cs_halo_sync_var(m->halo, CS_HALO_STANDARD, f_weight->val);
+        cs_halo_sync_var(m->halo, CS_HALO_STANDARD, weight);
       }
 
     }
@@ -1237,7 +1230,7 @@ _pressure_correction_fv(int                   iterns,
                                            i_visc,
                                            b_visc);
 
-      if (f_weight != NULL) { /* Weighting for gradient */
+      if (f_weight != nullptr) { /* Weighting for gradient */
         cs_real_6_t *weight = (cs_real_6_t *)f_weight->val;
 
         ctx.parallel_for(n_cells, [=] CS_F_HOST_DEVICE (cs_lnum_t c_id) {
@@ -1254,7 +1247,6 @@ _pressure_correction_fv(int                   iterns,
 
   }
   else {
-
     ctx_c.parallel_for(n_i_faces, [=] CS_F_HOST_DEVICE (cs_lnum_t f_id) {
       i_visc[f_id] = 0.;
     });
@@ -1262,9 +1254,6 @@ _pressure_correction_fv(int                   iterns,
     ctx.parallel_for(n_b_faces, [=] CS_F_HOST_DEVICE (cs_lnum_t f_id) {
       b_visc[f_id] = 0.;
     });
-    ctx.wait();
-    ctx_c.wait();
-
   }
 
   if (vp_param->staggered == 1) {
@@ -1279,10 +1268,10 @@ _pressure_correction_fv(int                   iterns,
       cs_lnum_t c_id = b_face_cells[f_id];
       b_visc[f_id] = taub[f_id] / dt[c_id] * b_visc[f_id];
     });
-
-    ctx.wait();
-    ctx_c.wait();
   }
+
+  ctx.wait(); // needed for rovsdt and b_visc
+  ctx_c.wait(); // needed for i_visc
 
   cs_matrix_wrapper_scalar(eqp_p->iconv, eqp_p->idiff, eqp_p->ndircl,
                            isym,
@@ -1290,7 +1279,7 @@ _pressure_correction_fv(int                   iterns,
                            0,   /* imucpp */
                            bc_coeffs_dp, rovsdt,
                            imasfl, bmasfl, i_visc, b_visc,
-                           NULL, dam, xam);
+                           nullptr, dam, xam);
 
   /* Mass flux initialization
      ------------------------ */
@@ -1344,13 +1333,9 @@ _pressure_correction_fv(int                   iterns,
 
     }
     else {
-
-      ctx.parallel_for(n_cells, [=] CS_F_HOST_DEVICE (cs_lnum_t c_id) {
-        wrk[c_id][0] = gradp[c_id][0];
-        wrk[c_id][1] = gradp[c_id][1];
-        wrk[c_id][2] = gradp[c_id][2];
-      });
-
+      cs_array_copy<cs_real_t>(3*n_cells,
+                               (const cs_real_t *)gradp,
+                               (cs_real_t *)wrk);
     }
 
     if (   (eqp_p->idften & CS_ISOTROPIC_DIFFUSION)
@@ -1392,11 +1377,7 @@ _pressure_correction_fv(int                   iterns,
   }
 
   else {
-    ctx.parallel_for(n_cells, [=] CS_F_HOST_DEVICE (cs_lnum_t c_id) {
-      wrk[c_id][0] = 0.;
-      wrk[c_id][1] = 0.;
-      wrk[c_id][2] = 0.;
-    });
+    cs_arrays_set_value<cs_real_t, 1>(3*n_cells, 0., (cs_real_t *)wrk);
   }
 
   if (idilat < 4) {
@@ -1567,7 +1548,7 @@ _pressure_correction_fv(int                   iterns,
 
   if (arak > 0.) {
 
-    cs_real_t *ipro_visc = NULL, *bpro_visc = NULL;
+    cs_real_t *ipro_visc = nullptr, *bpro_visc = nullptr;
 
     CS_MALLOC_HD(ipro_visc, n_i_faces, cs_real_t, cs_alloc_mode);
     CS_MALLOC_HD(bpro_visc, n_b_faces, cs_real_t, cs_alloc_mode);
@@ -1660,8 +1641,8 @@ _pressure_correction_fv(int                   iterns,
 
       ctx.wait();
 
-      cs_real_2_t *weighftp = NULL;
-      cs_real_t *weighbtp = NULL;
+      cs_real_2_t *weighftp = nullptr;
+      cs_real_t *weighbtp = nullptr;
       CS_MALLOC_HD(weighftp, n_i_faces, cs_real_2_t, cs_alloc_mode);
       CS_MALLOC_HD(weighbtp, n_b_faces, cs_real_t, cs_alloc_mode);
 
@@ -1743,7 +1724,7 @@ _pressure_correction_fv(int                   iterns,
    *   cpro_divu  is the initial divergence of the predicted mass flux */
 
   if (vp_param->staggered == 0) {
-    if (f_hp != NULL) {
+    if (f_hp != nullptr) {
       ctx.parallel_for(n_cells, [=] CS_F_HOST_DEVICE (cs_lnum_t c_id) {
         phi[c_id]  = cvar_hydro_pres[c_id] - cvar_hydro_pres_prev[c_id];
         dphi[c_id] = 0.;
@@ -1759,7 +1740,7 @@ _pressure_correction_fv(int                   iterns,
     }
   }
   else {
-    if (f_hp != NULL) {
+    if (f_hp != nullptr) {
       ctx.parallel_for(n_cells, [=] CS_F_HOST_DEVICE (cs_lnum_t c_id) {
         phi[c_id]  = cvara_pr[c_id] + cvar_hydro_pres[c_id]
                                     - cvar_hydro_pres_prev[c_id];
@@ -1790,7 +1771,7 @@ _pressure_correction_fv(int                   iterns,
    *   3. The mass flux is completed by rho u* . S
    */
 
-  cs_real_t *velflx = NULL, *velflb = NULL;
+  cs_real_t *velflx = nullptr, *velflb = nullptr;
 
   if (idilat >= 4) {
 
@@ -1867,17 +1848,17 @@ _pressure_correction_fv(int                   iterns,
 
   /* Mass source terms adding for volumic flow rate */
 
-  cs_lnum_t ncesmp = 0;
-  const cs_lnum_t *icetsm = nullptr;
-  cs_real_t *smcelp = nullptr;
+  cs_lnum_t n_elts = 0;
+  const cs_lnum_t *elt_ids = nullptr;
+  cs_real_t *mst_val_p = nullptr;
 
-  cs_volume_mass_injection_get_arrays(f_p, &ncesmp, &icetsm, nullptr,
-                                      &smcelp, nullptr);
+  cs_volume_mass_injection_get_arrays(f_p, &n_elts, &elt_ids, nullptr,
+                                      &mst_val_p, nullptr);
 
-  if (ncesmp > 0) {
-    ctx.parallel_for(ncesmp, [=] CS_F_HOST_DEVICE (cs_lnum_t c_idx) {
-      cs_lnum_t c_id = icetsm[c_idx];
-      cpro_divu[c_id] -= cell_f_vol[c_id] * smcelp[c_idx];
+  if (n_elts > 0) {
+    ctx.parallel_for(n_elts, [=] CS_F_HOST_DEVICE (cs_lnum_t c_idx) {
+      cs_lnum_t c_id = elt_ids[c_idx];
+      cpro_divu[c_id] -= cell_f_vol[c_id] * mst_val_p[c_idx];
     });
   }
 
@@ -1904,17 +1885,19 @@ _pressure_correction_fv(int                   iterns,
     const int ipr = cs_field_get_key_int(f_p, var_id_key);
 
     cs_real_t *_svcond = svcond + (ipr-1)*ncmast;
-    cs_real_t *surfbm = NULL;
+    cs_real_t *surfbm = nullptr;
     CS_MALLOC_HD(surfbm, ncmast, cs_real_t, cs_alloc_mode);
 
     cs_wall_condensation_volume_exchange_surf_at_cells(surfbm);
 
     ctx.parallel_for(ncmast, [=] CS_F_HOST_DEVICE (cs_lnum_t c_idx) {
       cs_lnum_t c_id = ltmast[c_idx];
-      cpro_divu[c_id] -= surfbm[c_idx]* _svcond[c_idx];
+      cpro_divu[c_id] -= surfbm[c_idx] * _svcond[c_idx];
     });
 
-    BFT_FREE(surfbm);
+    ctx.wait();
+
+    CS_FREE_HD(surfbm);
   }
 
   /* Source term associated to the mass aggregation */
@@ -1939,6 +1922,8 @@ _pressure_correction_fv(int                   iterns,
                              + theta *divu_prev[c_id];
         });
 
+        ctx.wait();
+
         CS_FREE_HD(divu_prev);
       }
       else {
@@ -1951,8 +1936,8 @@ _pressure_correction_fv(int                   iterns,
     else { /* compressible scheme explicit part */
       ctx.parallel_for(n_cells, [=] CS_F_HOST_DEVICE (cs_lnum_t c_id) {
         cs_real_t drom = crom_eos[c_id] - croma[c_id];
-        cs_real_t drop = (-1 + _coef ) * (cvar_pr[c_id] - cvara_pr[c_id])
-          * dc2[c_id];
+        cs_real_t drop =   (-1 + _coef ) * (cvar_pr[c_id] - cvara_pr[c_id])
+                         * dc2[c_id];
         cpro_divu[c_id] += (drom + drop) * cell_f_vol[c_id] / dt[c_id];
       });
     }
@@ -1964,10 +1949,7 @@ _pressure_correction_fv(int                   iterns,
   if (   cs_glob_lagr_time_scheme->iilagr == CS_LAGR_TWOWAY_COUPLING
       && cs_glob_lagr_source_terms->ltsmas == 1) {
 
-    const cs_lagr_source_terms_t  *lag_st = cs_glob_lagr_source_terms;
-
-    cs_lnum_t itsmas = cs_glob_lagr_source_terms->itsmas;
-    cs_real_t *lag_st_m = lag_st->st_val + (itsmas-1)*n_cells_ext;
+    cs_real_t *lag_st_m = cs_field_by_name("lagr_st_pressure")->val;
 
     ctx.parallel_for(n_cells, [=] CS_F_HOST_DEVICE (cs_lnum_t c_id) {
       cpro_divu[c_id] -= lag_st_m[c_id];
@@ -1977,7 +1959,7 @@ _pressure_correction_fv(int                   iterns,
   /* Cavitation source term */
 
   if (i_vof_mass_transfer != 0) {
-    cs_real_t *gamcav = cs_get_cavitation_gam();
+    cs_real_t *gamcav = cs_field_by_name("model:cavitation_gamma")->val;
     cs_real_t rho1 = vof_parameters->rho1;
     cs_real_t rho2 = vof_parameters->rho2;
 
@@ -2140,8 +2122,6 @@ _pressure_correction_fv(int                   iterns,
                                          rhs);
   }
 
-
-
   if (eqp_p->iswdyn >= 1) {
     ctx.parallel_for(n_cells, [=] CS_F_HOST_DEVICE (cs_lnum_t c_id) {
       /* Dynamic relaxation: stores the initial rhs */
@@ -2213,7 +2193,7 @@ _pressure_correction_fv(int                   iterns,
 
     cs_real_t ressol = residual;   /* solver residual */
 
-    cs_sles_solve_native(f_p->id, NULL,
+    cs_sles_solve_native(f_p->id, nullptr,
                          symmetric, 1, 1,
                          dam, xam,
                          eqp_p->epsilo,
@@ -2502,7 +2482,7 @@ _pressure_correction_fv(int                   iterns,
   /* Compute the indicator, taken the volume into account (L2 norm) or not */
 
   cs_field_t *f_err_est = cs_field_by_name_try("est_error_der_1");
-  if (f_err_est != NULL) {
+  if (f_err_est != nullptr) {
     cs_real_t *c_estim_der = f_err_est->val;
     const cs_real_t *restrict cell_vol = fvq->cell_vol;
 
@@ -2511,7 +2491,7 @@ _pressure_correction_fv(int                   iterns,
     });
   }
   f_err_est = cs_field_by_name_try("est_error_der_2");
-  if (f_err_est != NULL) {
+  if (f_err_est != nullptr) {
     cs_real_t *c_estim_der = f_err_est->val;
     const cs_real_t *restrict cell_vol = fvq->cell_vol;
 
@@ -2643,17 +2623,17 @@ _pressure_correction_fv(int                   iterns,
     ctx.parallel_for(n_cells, [=] CS_F_HOST_DEVICE (cs_lnum_t c_id) {
       crom_eos[c_id] += phi[c_id]/c2[c_id];
     });
+    ctx.wait();
   }
-
-  CS_FREE_HD(c2);
 
   /* Suppression of the grid hierarchy (release solver setup)
      --------------------------------- */
 
-  cs_sles_free_native(f_p->id, NULL);
+  cs_sles_free_native(f_p->id, nullptr);
 
   CS_FREE_HD(dam);
   CS_FREE_HD(xam);
+  CS_FREE_HD(c2);
 
   /* Weakly compressible algorithm: semi analytic scheme
      2nd step solving a convection diffusion equation
@@ -2747,11 +2727,11 @@ _pressure_correction_fv(int                   iterns,
                        static_cast<cs_gradient_limit_t>(eqp_u->imligr),
                        eqp_u->epsrgr,
                        eqp_u->climgr,
-                       NULL,          /* f_ext */
+                       nullptr,          /* f_ext */
                        &bc_coeffs_rho_loc,
                        crom,
-                       NULL,         /* c_weight */
-                       NULL,         /* cpl */
+                       nullptr,         /* c_weight */
+                       nullptr,         /* cpl */
                        gradp);
 
     CS_FREE_HD(bc_coeffs_rho_loc.a);
@@ -2828,12 +2808,12 @@ _pressure_correction_fv(int                   iterns,
                       &bc_coeffs_dp2,
                       velflx, velflb,
                       i_visc, b_visc,
-                      NULL,  /* viscel */
-                      NULL,  /* xcpp */
-                      NULL,  /* weighf */
-                      NULL,  /* weighb */
+                      nullptr,  /* viscel */
+                      nullptr,  /* xcpp */
+                      nullptr,  /* weighf */
+                      nullptr,  /* weighb */
                       0,     /* icvflb; upwind scheme */
-                      NULL,
+                      nullptr,
                       rhs);
 
     /* Initialization of the variable to solve */
@@ -2876,15 +2856,15 @@ _pressure_correction_fv(int                   iterns,
                                        velflx, velflb,
                                        i_visc, b_visc,
                                        i_visc, b_visc,
-                                       NULL,   /* viscel */
+                                       nullptr,   /* viscel */
                                        weighf, weighb,
                                        0,      /* icvflb (upwind conv. flux) */
-                                       NULL,   /* icvfli */
+                                       nullptr,   /* icvfli */
                                        rovsdt,
                                        rhs,
                                        dphi, ddphi,
-                                       NULL,   /* xcpp */
-                                       NULL);  /* eswork */
+                                       nullptr,   /* xcpp */
+                                       nullptr);  /* eswork */
 
     cs_sles_pop(f_p->id);
 
@@ -3056,7 +3036,7 @@ _pressure_correction_fv(int                   iterns,
 
   /* Compute the isobaric heat capacity if needed */
   cs_field_t  *f_cv = cs_field_by_name_try("isobaric_heat_capacity");
-  if (f_cv != NULL) {
+  if (f_cv != nullptr) {
      cs_thermal_model_cv(f_cv->val);
   }
 
@@ -3081,14 +3061,12 @@ _pressure_correction_fv(int                   iterns,
   /* Save some information */
   if (idilat == 2 && ieos != CS_EOS_NONE) {
     /* CFL conditions related to the pressure equation */
-    cs_real_t *cflp = NULL;
+    cs_real_t *cflp = nullptr;
     cs_field_t *f_cflp = cs_field_by_name_try("algo:cfl_p");
-    if (f_cflp != NULL) {
+    if (f_cflp != nullptr) {
       cflp = f_cflp->val;
 
-      ctx.parallel_for(n_cells_ext, [=] CS_F_HOST_DEVICE (cs_lnum_t c_id) {
-        cflp[c_id] = 0.;
-      });
+      cs_arrays_set_value<cs_real_t, 1>(n_cells_ext, 0., cflp);
 
       ctx.wait();
 
@@ -3108,6 +3086,7 @@ _pressure_correction_fv(int                   iterns,
       cs_real_t *rho_k_prev = cs_field_by_name("rho_k_prev")->val;
       // Test compute kinetic energy st
       cs_thermal_model_kinetic_st_finalize(rho_k_prev, crom_eos);
+
       ctx.parallel_for(n_cells_ext, [=] CS_F_HOST_DEVICE (cs_lnum_t c_id) {
         rho_k_prev[c_id] = crom_eos[c_id];
       });
@@ -3132,6 +3111,20 @@ _pressure_correction_fv(int                   iterns,
                       + (1.-fw[f_id])*crom[c_id_1];
     });
 
+  }
+
+  /* Finalize optional post_processing algo field */
+  if (f_divu != nullptr) {
+    int *c_disable_flag = fvq->c_disable_flag;
+    cs_lnum_t has_dc = fvq->has_disable_flag;
+     ctx.parallel_for(n_cells, [=] CS_F_HOST_DEVICE (cs_lnum_t c_id) {
+       cs_real_t dvol = 0;
+       const int ind = has_dc * c_id;
+       const int c_act = (1 - (has_dc * c_disable_flag[ind]));
+       if (c_act == 1)
+         dvol = 1.0/cell_f_vol[c_id];
+       cpro_divu[c_id] *= dvol;
+    });
   }
 
   ctx.wait();
@@ -3216,13 +3209,13 @@ _pressure_correction_cdo(cs_real_t              vel[][3],
     = cs_glob_physical_model_flag[CS_COMPRESSIBLE];
 
   cs_pressure_correction_cdo_t *prcdo = cs_pressure_correction_cdo;
-  if (prcdo == NULL) bft_error(__FILE__, __LINE__, 0, _(_err_empty_prcdo));
+  if (prcdo == nullptr) bft_error(__FILE__, __LINE__, 0, _(_err_empty_prcdo));
 
   cs_equation_t  *eq_dp = prcdo->pressure_incr;
 
   /* Allocate temporary arrays */
 
-  cs_real_3_t  *wrk = NULL;
+  cs_real_3_t  *wrk = nullptr;
   BFT_MALLOC(wrk, n_cells_ext, cs_real_3_t);
 
   cs_field_t  *f_dp = cs_field_by_id(eq_dp->field_id);
@@ -3354,14 +3347,14 @@ _pressure_correction_cdo(cs_real_t              vel[][3],
   /* Update the mass flux and potential flux
      --------------------------------------- */
 
-  cs_real_t *diff_flux = NULL;
+  cs_real_t *diff_flux = nullptr;
   BFT_MALLOC(diff_flux, quant->n_faces, cs_real_t);
 
   cs_equation_compute_diffusive_flux(eq_dp,
-                                     NULL, /* eqp --> default*/
-                                     NULL, /* diff_pty --> default */
-                                     NULL, /* dof_values --> default */
-                                     NULL, /* cell_values --> default */
+                                     nullptr, /* eqp --> default*/
+                                     nullptr, /* diff_pty --> default */
+                                     nullptr, /* dof_values --> default */
+                                     nullptr, /* cell_values --> default */
                                      cs_flag_primal_face,
                                      cs_glob_time_step->t_cur,
                                      diff_flux);
@@ -3420,7 +3413,7 @@ _pressure_correction_cdo(cs_real_t              vel[][3],
   BFT_FREE(diff_flux);
 
 #if defined(DEBUG) && !defined(NDEBUG) && CS_PRESSURE_CORRECTION_CDO_DBG > 0
-  cs_real_t *res = NULL;
+  cs_real_t *res = nullptr;
   BFT_MALLOC(res, n_cells_ext, cs_real_t);
 
   cs_divergence(m, 1, imasfl, bmasfl, res);
@@ -3453,28 +3446,28 @@ _pressure_correction_cdo(cs_real_t              vel[][3],
 static cs_pressure_correction_cdo_t *
 _pressure_correction_cdo_create(void)
 {
-  cs_pressure_correction_cdo_t *prcdo = NULL;
+  cs_pressure_correction_cdo_t *prcdo = nullptr;
 
   BFT_MALLOC(prcdo, 1, cs_pressure_correction_cdo_t);
 
   /* Equation
      -------- */
 
-  prcdo->pressure_incr = NULL;
+  prcdo->pressure_incr = nullptr;
 
   /* Fields
      ------ */
 
-  prcdo->pressure_incr_gradient = NULL;
-  prcdo->pressure_gradient = NULL;
+  prcdo->pressure_incr_gradient = nullptr;
+  prcdo->pressure_gradient = nullptr;
 
   /* Other arrays
      ------------ */
 
-  prcdo->div_st = NULL;
-  prcdo->inner_potential_flux = NULL;
-  prcdo->bdy_potential_flux = NULL;
-  prcdo->bdy_pressure_incr = NULL;
+  prcdo->div_st = nullptr;
+  prcdo->inner_potential_flux = nullptr;
+  prcdo->bdy_potential_flux = nullptr;
+  prcdo->bdy_pressure_incr = nullptr;
 
   return prcdo;
 }
@@ -3497,7 +3490,7 @@ cs_pressure_correction_fv_activate(void)
                _("\n The pressure correction step is treated by CDO,"
                  "\n  Check the pressure correction model"));
 
-  if (CS_F_(p) != NULL) {
+  if (CS_F_(p) != nullptr) {
     cs_field_t *f = cs_field_create("pressure_increment",
                                     CS_FIELD_INTENSIVE,
                                     CS_MESH_LOCATION_CELLS,
@@ -3523,13 +3516,13 @@ cs_pressure_correction_cdo_activate(void)
 
   cs_pressure_correction_cdo_active = true;
 
-  cs_pressure_correction_cdo_t *prcdo = NULL;
+  cs_pressure_correction_cdo_t *prcdo = nullptr;
 
-  if (cs_pressure_correction_cdo == NULL)
+  if (cs_pressure_correction_cdo == nullptr)
     cs_pressure_correction_cdo = _pressure_correction_cdo_create();
 
   prcdo = cs_pressure_correction_cdo;
-  assert(prcdo != NULL);
+  assert(prcdo != nullptr);
 
   /* Activate the CDO module along with the FV framework */
 
@@ -3543,7 +3536,7 @@ cs_pressure_correction_cdo_activate(void)
                     "pressure_increment", /* associated variable field name */
                     CS_EQUATION_TYPE_PREDEFINED,
                     1,                        /* dimension of the unknown */
-                    CS_PARAM_BC_HMG_NEUMANN); /* default boundary */
+                    CS_BC_SYMMETRY); /* default boundary */
 
   cs_equation_param_t  *eqp = cs_equation_get_param(eq);
 
@@ -3616,7 +3609,7 @@ cs_pressure_correction_cdo_init_setup(void)
 {
   cs_pressure_correction_cdo_t *prcdo = cs_pressure_correction_cdo;
 
-  if (prcdo == NULL) bft_error(__FILE__, __LINE__, 0, _(_err_empty_prcdo));
+  if (prcdo == nullptr) bft_error(__FILE__, __LINE__, 0, _(_err_empty_prcdo));
 
   cs_equation_t *eq = prcdo->pressure_incr;
   cs_equation_param_t* eqp = cs_equation_get_param(eq);
@@ -3638,7 +3631,7 @@ cs_pressure_correction_cdo_init_setup(void)
   const int  field_post_flag = CS_POST_ON_LOCATION | CS_POST_MONITOR;
 
   prcdo->pressure_gradient =
-    cs_field_find_or_create("algo:gradient_pressure",
+    cs_field_find_or_create("algo:pressure_gradient",
                             CS_FIELD_INTENSIVE,
                             CS_MESH_LOCATION_CELLS,
                             3,
@@ -3648,7 +3641,7 @@ cs_pressure_correction_cdo_init_setup(void)
   cs_field_set_key_int(prcdo->pressure_gradient, log_key, field_post_flag);
 
   prcdo->pressure_incr_gradient =
-    cs_field_find_or_create("algo:gradient_pressure_increment",
+    cs_field_find_or_create("algo:pressure_increment_gradient",
                             CS_FIELD_INTENSIVE,
                             CS_MESH_LOCATION_CELLS,
                             3,
@@ -3682,7 +3675,7 @@ cs_pressure_correction_cdo_finalize_setup(const cs_domain_t   *domain)
 {
   cs_pressure_correction_cdo_t *prcdo = cs_pressure_correction_cdo;
 
-  if (prcdo == NULL) bft_error(__FILE__, __LINE__, 0, _(_err_empty_prcdo));
+  if (prcdo == nullptr) bft_error(__FILE__, __LINE__, 0, _(_err_empty_prcdo));
 
   cs_equation_t *eq = prcdo->pressure_incr;
   cs_equation_param_t* eqp = cs_equation_get_param(eq);
@@ -3706,7 +3699,7 @@ cs_pressure_correction_cdo_finalize_setup(const cs_domain_t   *domain)
   cs_array_real_fill_zero(n_cells_ext, prcdo->div_st);
 
   cs_equation_add_source_term_by_array(eqp,
-                                       NULL,  /* all cells */
+                                       nullptr,  /* all cells */
                                        cs_flag_primal_cell,
                                        prcdo->div_st,
                                        false, /* is owner */
@@ -3731,7 +3724,7 @@ cs_pressure_correction_cdo_finalize_setup(const cs_domain_t   *domain)
       }
 
       cs_equation_add_bc_by_array(eqp,
-                                  CS_PARAM_BC_DIRICHLET,
+                                  CS_BC_DIRICHLET,
                                   z->name,
                                   cs_flag_primal_face,
                                   prcdo->bdy_pressure_incr,
@@ -3753,7 +3746,7 @@ void
 cs_pressure_correction_cdo_destroy_all(void)
 {
   cs_pressure_correction_cdo_t  *prcdo = cs_pressure_correction_cdo;
-  if (prcdo == NULL)
+  if (prcdo == nullptr)
     return;
 
   BFT_FREE(prcdo->div_st);
@@ -3763,7 +3756,7 @@ cs_pressure_correction_cdo_destroy_all(void)
 
   BFT_FREE(prcdo);
 
-  cs_pressure_correction_cdo = NULL;
+  cs_pressure_correction_cdo = nullptr;
 }
 
 /*----------------------------------------------------------------------------*/

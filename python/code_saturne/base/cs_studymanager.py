@@ -120,6 +120,10 @@ def process_cmd_line(argv, pkg):
                       type="string",
                       help="name of studymanager log file (default value is 'studymanager.log')")
 
+    parser.add_option("--state-file", dest="state_file", default="state_detailed",
+                      type="string",
+                      help="name of file for state analysis (default value is 'state_detailed')")
+
     parser.add_option("-z", "--disable-tex",
                       action="store_true", dest="disable_tex", default=False,
                       help="disable text rendering with LaTex in Matplotlib (use Mathtext)")
@@ -192,6 +196,14 @@ def process_cmd_line(argv, pkg):
                       help="set CS_MEM_LOG environment variable to 'cs_mem.log' " \
                           + "and check that memory is correctly freed at the " \
                           + "end of the computation.")
+
+    parser.add_option("--print-study-info", dest="print_study_info",
+                      action="store_true", default=False,
+                      help="Print study metadata information.")
+
+    parser.add_option("--dump-study-info", dest="dump_study_info",
+                      action="store_true", default=False,
+                      help="Dump study metadata information to report files")
 
     if len(argv)==0:
         parser.print_help(sys.stderr)
@@ -281,6 +293,18 @@ def release():
     return issue
 
 #-------------------------------------------------------------------------------
+# get study metadata information
+#-------------------------------------------------------------------------------
+
+def get_study_metadata(options, pkg):
+
+    from code_saturne.studymanager.cs_studymanager_metadata import study_metadata
+
+    md = study_metadata(pkg, options.filename)
+
+    return md
+
+#-------------------------------------------------------------------------------
 # Start point of studymanager script
 #-------------------------------------------------------------------------------
 
@@ -342,6 +366,17 @@ def run_studymanager(pkg, options):
         return 0
     if options.debug:
         print(" run_studymanager() >> Studies are initialized")
+
+    # Print metadata
+    if options.print_study_info:
+        md = get_study_metadata(options, pkg)
+        md.log()
+        return 0
+
+    if options.dump_study_info:
+        md = get_study_metadata(options, pkg)
+        md.dump_keywords()
+        md.dump_readme()
 
     # Print header
     report_in_file = False
@@ -420,7 +455,7 @@ def run_studymanager(pkg, options):
     if options.runcase:
         if slurm_submission:
             studies.check_slurm_batches()
-            studies.run_slurm_batches()
+            studies.run_slurm_batches(options.state_file)
         else:
             studies.run()
 
@@ -430,7 +465,7 @@ def run_studymanager(pkg, options):
     # Report state
 
     if options.casestate and not slurm_submission:
-        studies.report_state()
+        studies.report_state(options.state_file)
 
     # Compare checkpoint files
 

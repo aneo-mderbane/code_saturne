@@ -595,9 +595,6 @@ _beta_limiter_num(cs_field_t                 *f,
 /*----------------------------------------------------------------------------
  * Synchronize strided gradient ghost cell values.
  *
- * template parameters:
- *   stride        1 for scalars, 3 for vectors, 6 for symmetric tensors
- *
  * parameters:
  *   m              <-- pointer to associated mesh structure
  *   on_device,     <-- is data on device (GPU) ?
@@ -605,7 +602,6 @@ _beta_limiter_num(cs_field_t                 *f,
  *   grad           --> gradient of a variable
  *----------------------------------------------------------------------------*/
 
-template <cs_lnum_t stride>
 static void
 _sync_gradient_halo(const cs_mesh_t         *m,
                     [[maybe_unused]] bool    on_device,
@@ -618,7 +614,7 @@ _sync_gradient_halo(const cs_mesh_t         *m,
                    (cs_real_t *)grad);
   else
 #endif
-    cs_halo_sync_var(m->halo, halo_type, (cs_real_t *)grad);
+    cs_halo_sync_var_strided(m->halo, halo_type, (cs_real_t *)grad, 3);
 
   if (m->have_rotation_perio) {
 #if defined(HAVE_ACCEL)
@@ -8368,7 +8364,8 @@ cs_convection_diffusion_vector(int                         idtvar,
       /* Trace of velocity gradient */
       cs_real_t grdtrv = (grad[ii][0][0]+grad[ii][1][1]+grad[ii][2][2]);
       cs_real_t secvis = b_secvis[face_id]; /* - 2/3 * mu */
-      cs_real_t mult = secvis * grdtrv * b_f_face_surf[face_id];
+      cs_real_t mult = thetap * bndcel[ii]
+        * secvis * grdtrv * b_f_face_surf[face_id];
 
       cs_real_t flux[3];
       for (cs_lnum_t isou = 0; isou < 3; isou++) {
@@ -12939,10 +12936,10 @@ cs_slope_test_gradient(int                         f_id,
   /* Synchronization for parallelism or periodicity */
 
   if (m->halo != NULL)
-    _sync_gradient_halo<1>(m,
-                           use_gpu,
-                           halo_type,
-                           grdpa);
+    _sync_gradient_halo(m,
+                        use_gpu,
+                        halo_type,
+                        grdpa);
 
   if (cs_glob_timer_kernels_flag > 0) {
     std::chrono::high_resolution_clock::time_point

@@ -71,7 +71,7 @@ typedef struct {
   cs_param_solver_class_t    solver_class; /*!< class of SLES to consider  */
   cs_param_precond_type_t    precond;      /*!< type of preconditioner */
   cs_param_solver_type_t     solver;       /*!< type of solver */
-  bool                       flexible;     /*!< need a flexible variant ? */
+  bool                       need_flexible; /*!< need a flexible variant ? */
   int                        restart;      /*!< max. iter. before restarting */
   cs_param_amg_type_t        amg_type;     /*!< type of AMG algorithm */
 
@@ -93,6 +93,13 @@ typedef struct {
    */
 
   bool                       allow_no_op;
+
+  /*! \var mat_is_sym
+   *  allow one to know if the matric is symmetric (independent of the storing)
+   *  Default value is false
+   */
+
+  bool mat_is_sym;
 
   /*! \var cvg_param
    *  Structure storing the parameters to know if an iterative process has to

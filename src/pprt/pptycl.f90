@@ -111,13 +111,19 @@ interface
     implicit none
   end subroutine cs_ctwr_bcond
 
+  subroutine cs_atmo_bcond()  &
+    bind(C, name='cs_atmo_bcond')
+    use, intrinsic :: iso_c_binding
+    implicit none
+  end subroutine cs_atmo_bcond
+
 end interface
 
 !===============================================================================
 ! 1. Zones list (for some models)
 !===============================================================================
 
-if (ippmod(icompf).lt.0) then
+if (ippmod(icompf).lt.0.and.ippmod(iatmos).eq.-1.and.ippmod(iaeros).eq.-1) then
   ! --> faces all belong to a boundary zone
   iok = 0
 
@@ -180,7 +186,8 @@ call field_build_bc_codes_all(icodcl, rcodcl) ! Get map
 
 ! Atmospheric flows
 if (ippmod(iatmos).ge.0) then
-  call attycl(itypfb, izfppp, icodcl, rcodcl)
+  call attycl(itypfb, icodcl, rcodcl)
+  call cs_atmo_bcond()
 endif
 
 ! Cooling towers

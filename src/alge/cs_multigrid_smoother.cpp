@@ -2091,7 +2091,8 @@ _p_gauss_seidel(cs_sles_it_t              *c,
  *                             see \ref sles_it for details)
  * \param[in]  n_iter          number of iterations to perform
  *
- * \return a pointer to newly created smoother info object.
+ * \return a pointer to newly created smoother info object, or NULL
+ *         if not available for this solver type.
  */
 /*----------------------------------------------------------------------------*/
 
@@ -2150,7 +2151,7 @@ cs_multigrid_smoother_create(cs_sles_it_type_t    smoother_type,
     break;
 
   default: /* Other iterative solvers are not tuned for smoothing */
-    bft_error(__FILE__, __LINE__, 0, "%s: Invalid smoother.", __func__);
+    return nullptr;
     break;
 
   } /* Smoother type */
@@ -2226,15 +2227,16 @@ cs_multigrid_smoother_setup(void               *context,
     cs_matrix_log_info(a, verbosity);
   }
 
-  if (c->type == CS_SLES_JACOBI)
-    cs_sles_it_setup_priv(c, name, a, verbosity, diag_block_size, true);
+  bool block_nn_inverse = false;
 
-  else if (   c->type == CS_SLES_P_GAUSS_SEIDEL
-           || c->type == CS_SLES_P_SYM_GAUSS_SEIDEL) {
-    /* Force to Jacobi type in case matrix type is not adapted */
-    if (cs_matrix_get_type(a) != CS_MATRIX_MSR)
+  if (   c->type == CS_SLES_JACOBI
+      || (   c->type >= CS_SLES_P_GAUSS_SEIDEL
+          && c->type <= CS_SLES_P_SYM_GAUSS_SEIDEL)) {
+    /* Force to Jacobi in case matrix type is not adapted */
+    if (cs_matrix_get_type(a) != CS_MATRIX_MSR) {
       c->type = CS_SLES_JACOBI;
-    cs_sles_it_setup_priv(c, name, a, verbosity, diag_block_size, true);
+    }
+    block_nn_inverse = true;
   }
 
   else if (   c->type == CS_SLES_TS_F_GAUSS_SEIDEL
@@ -2244,11 +2246,8 @@ cs_multigrid_smoother_setup(void               *context,
       c->type = CS_SLES_JACOBI;
       c->n_max_iter = 2;
     }
-    cs_sles_it_setup_priv(c, name, a, verbosity, diag_block_size, true);
+    block_nn_inverse = true;
   }
-
-  else
-    cs_sles_it_setup_priv(c, name, a, verbosity, diag_block_size, false);
 
   switch (c->type) {
 
@@ -2257,7 +2256,7 @@ cs_multigrid_smoother_setup(void               *context,
     {
       bool single_reduce = false;
 #if defined(HAVE_MPI)
-      cs_gnum_t n_m_rows = c->setup_data->n_rows;
+      cs_gnum_t n_m_rows = cs_matrix_get_n_rows(a) * diag_block_size;
       if (c->comm != MPI_COMM_NULL) {
         int size;
         cs_gnum_t _n_m_rows;
@@ -2349,6 +2348,11 @@ cs_multigrid_smoother_setup(void               *context,
        __func__, name, (int)c->type);
     break;
   }
+
+  /* Setup preconditioner and/or auxiliary data */
+
+  cs_sles_it_setup_priv(c, name, a, verbosity, diag_block_size,
+                        block_nn_inverse);
 
   /* Now finish */
   assert(c->update_stats == false);

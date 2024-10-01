@@ -34,7 +34,6 @@ subroutine iniini () &
 
 use atincl
 use paramx
-use cdomod
 use cstnum
 use dimens
 use numvar
@@ -42,7 +41,6 @@ use optcal
 use cstphy
 use entsor
 use pointe
-use albase
 use parall
 use period
 use ppincl
@@ -50,9 +48,7 @@ use ppcpfu
 use mesh
 use field
 use vof
-use cavitation
 use radiat
-use turbomachinery
 use ctincl
 use cfpoin
 use vof
@@ -86,8 +82,6 @@ call field_get_key_id("diffusivity_ref", kvisl0)
 
 call field_get_key_id("is_temperature", kscacp)
 
-call field_get_key_id("density_id", kromsl)
-
 call field_get_key_id("gradient_weighting_id", kwgrec)
 
 call field_get_key_id("source_term_prev_id", kstprv)
@@ -95,20 +89,14 @@ call field_get_key_id("source_term_id", kst)
 
 call field_get_key_id("turbulent_schmidt", ksigmas)
 
-call field_get_key_id("turbulent_flux_ctheta", kctheta)
-
 icrom = -1
 ibrom = -1
-
-ipori = -1
-iporf = -1
 
 !===============================================================================
 ! Map Fortran pointers to C global data
 !===============================================================================
 
 call atmo_init
-call cdo_init
 call time_step_init
 call time_step_options_init
 call thermal_model_init
@@ -119,23 +107,16 @@ call turb_hybrid_model_init
 call turb_model_constants_init
 call wall_functions_init
 call physical_constants_init
-call porosity_ibm_init
-call porosity_from_scan_init
 call fluid_properties_init
 call space_disc_options_init
 call time_scheme_options_init
-call wall_distance_options_init
 call velocity_pressure_options_init
 call restart_auxiliary_options_init
 call turb_reference_values_init
 call radiat_init
-call gas_mix_options_init
 call ctwr_properties_init
-call map_ale
 call cf_model_init
 call vof_model_init
-call cavitation_model_init
-call map_turbomachinery_model(iturbo)
 
 !===============================================================================
 ! Get mesh metadata.
@@ -159,7 +140,6 @@ enddo
 do iscal = 1, nscamx
   isca  (iscal) = 0
   iscapp(iscal) = 0
-  iscasp(iscal) = 0
 enddo
 
 return

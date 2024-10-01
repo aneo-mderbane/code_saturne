@@ -170,7 +170,7 @@ integer(c_int), pointer, save :: theo_interp
 !-------------------------------------------------------------------------------
 
 !> reference pressure (to compute potential temp: 1.0d+5)
-real(c_double), pointer, save:: ps
+real(c_double), pointer, save :: ps
 
 ! 2.2. Space and time reference of the run
 !-------------------------------------------------------------------------------
@@ -212,7 +212,7 @@ integer(c_int), pointer, save:: nbmaxt
 !> = 0 : bottom to top Laplace integration, based on P(sea level) (default)
 !> = 1 : top to bottom Laplace integration based on P computed for
 !>            the standard atmosphere at z(nbmaxt)
-integer, save:: ihpm
+integer(c_int), pointer, save:: ihpm
 
 ! 2.4 Data specific to the 1-D vertical grid:
 !-------------------------------------------
@@ -238,18 +238,18 @@ real(c_double), pointer, save :: meteo_zi
 integer(c_int), pointer, save :: iatra1
 
 !> 1D radiative model pass frequency
-integer, save:: nfatr1
+integer(c_int), pointer, save :: nfatr1
 
 !> flag for the standard atmo humidity profile
 !> - 0: q = 0 (default)
 !> - 1: q = decreasing exponential
-integer, save:: iqv0
+integer(c_int), pointer, save :: iqv0
 
 !> pointer for 1D infrared profile
-integer, save:: idrayi
+integer(c_int), pointer, save :: idrayi
 
 !> pointer for 1D solar profile
-integer, save:: idrayst
+integer(c_int), pointer, save :: idrayst
 
 !> grid formed by 1D profiles
 integer, save:: igrid
@@ -362,8 +362,9 @@ integer(c_int), pointer, save:: modsedi
 !> deposition flag
 integer(c_int), pointer, save:: moddep
 
-!> adimensional :  sigc=0.53 other referenced values are 0.28, 0.15
-double precision, save:: sigc
+!> logaritmic standard deviation of the log-normal law of the droplet spectrum
+!> adimensional:  sigc=0.53 other referenced values are 0.28, 0.15
+real(c_double), pointer, save :: sigc
 
 !> force initilization in case of restart (this option is
 !> automatically set in lecamp)
@@ -437,11 +438,12 @@ double precision, save:: zaero
         init_aero_with_lib, n_aero, n_sizebin, imeteo,                  &
         nbmetd, nbmett, nbmetm, iatra1, nbmaxt,                         &
         meteo_zi, iatsoil,                                              &
-        nvertv, kvert, kmx)                             &
+        nvertv, kvert, kmx, tsini, tprini, qvsini, ihpm, iqv0,          &
+        nfatr1, w1ini, w2ini, sigc, idrayi, idrayst)          &
       bind(C, name='cs_f_atmo_get_pointers')
       use, intrinsic :: iso_c_binding
       implicit none
-      type(c_ptr), intent(out) :: ps
+      type(c_ptr), intent(out) :: ps, sigc
       type(c_ptr), intent(out) :: compute_z_ground, iatmst, theo_interp
       type(c_ptr), intent(out) :: ichemistry, isepchemistry, nespg, nrg
       type(c_ptr), intent(out) :: sedimentation_model, deposition_model
@@ -449,15 +451,15 @@ double precision, save:: zaero
       type(c_ptr), intent(out) :: subgrid_model, distribution_model
       type(c_ptr), intent(out) :: syear, squant, shour, smin, ssec
       type(c_ptr), intent(out) :: longitude, latitude
-      type(c_ptr), intent(out) :: x_l93, y_l93
+      type(c_ptr), intent(out) :: x_l93, y_l93, idrayi, idrayst
       type(c_ptr), intent(out) :: iaerosol, frozen_gas_chem
       type(c_ptr), intent(out) :: init_gas_with_lib, init_aero_with_lib
       type(c_ptr), intent(out) :: n_aero, n_sizebin, chem_with_photo
       type(c_ptr), intent(out) :: imeteo
       type(c_ptr), intent(out) :: nbmetd, nbmett, nbmetm, iatra1, nbmaxt
-      type(c_ptr), intent(out) :: meteo_zi
-      type(c_ptr), intent(out) :: iatsoil
-      type(c_ptr), intent(out) :: nvertv, kvert, kmx
+      type(c_ptr), intent(out) :: meteo_zi, iqv0, w1ini, w2ini
+      type(c_ptr), intent(out) :: iatsoil, tsini, tprini, qvsini
+      type(c_ptr), intent(out) :: nvertv, kvert, kmx, ihpm, nfatr1
     end subroutine cs_f_atmo_get_pointers
 
     !---------------------------------------------------------------------------
@@ -554,22 +556,6 @@ double precision, save:: zaero
 
     !---------------------------------------------------------------------------
 
-    !> \brief Calculation of the absolute humidity at saturation
-    !>        for a given temperature.
-
-    !> \param[in]  t_c  temperature (in Celsius)
-    !> \param[in]  p    pressure
-
-    function cs_air_x_sat(t_c, p) result(x_s) &
-        bind(C, name='cs_air_x_sat')
-      use, intrinsic :: iso_c_binding
-      implicit none
-      real(c_double), value :: t_c, p
-      real(c_double) :: x_s
-    end function cs_air_x_sat
-
-    !---------------------------------------------------------------------------
-
     !> \brief Calculation of the air water mass fraction at saturation
     !>        for a given temperature.
 
@@ -583,21 +569,6 @@ double precision, save:: zaero
       real(c_double), value :: t_c, p
       real(c_double) :: x_s
     end function cs_air_yw_sat
-
-    !---------------------------------------------------------------------------
-
-    !> \brief Computes the saturation water vapor pressure function
-    !> of the temperature (C).
-
-    !> \param[in]  t_c  temperature (in Celsius)
-
-    function cs_air_pwv_sat(t_c) result(x_s) &
-        bind(C, name='cs_air_pwv_sat')
-      use, intrinsic :: iso_c_binding
-      implicit none
-      real(c_double), value :: t_c
-      real(c_double) :: x_s
-    end function cs_air_pwv_sat
 
     !---------------------------------------------------------------------------
 
@@ -755,6 +726,7 @@ contains
 
     use, intrinsic :: iso_c_binding
     use atchem
+    use atsoil
     use sshaerosol
     use cs_c_bindings
 
@@ -768,14 +740,14 @@ contains
     type(c_ptr) :: c_distribution_model
     type(c_ptr) :: c_syear, c_squant, c_shour, c_smin, c_ssec
     type(c_ptr) :: c_longitude, c_latitude
-    type(c_ptr) :: c_xl93, c_yl93
+    type(c_ptr) :: c_xl93, c_yl93, c_sigc
     type(c_ptr) :: c_modelaero, c_frozen_gas_chem, c_nlayer, c_nsize
     type(c_ptr) :: c_init_gas_with_lib, c_init_aero_with_lib, c_chem_with_photo
-    type(c_ptr) :: c_imeteo
+    type(c_ptr) :: c_imeteo, c_iqv0, c_idrayi, c_idrayst
     type(c_ptr) :: c_nbmetd, c_nbmett, c_nbmetm, c_iatra1, c_nbmaxt
-    type(c_ptr) :: c_meteo_zi
-    type(c_ptr) :: c_iatsoil, c_isepchemistry
-    type(c_ptr) :: c_nvert, c_kvert, c_kmx, c_theo_interp
+    type(c_ptr) :: c_meteo_zi, c_tprini, c_qvsini, c_nfatr1
+    type(c_ptr) :: c_iatsoil, c_tsini, c_isepchemistry, c_w1ini, c_w2ini
+    type(c_ptr) :: c_nvert, c_kvert, c_kmx, c_theo_interp, c_ihpm
 
     call cs_f_atmo_get_pointers(c_ps,               &
       c_syear, c_squant, c_shour, c_smin, c_ssec,   &
@@ -793,7 +765,9 @@ contains
       c_nsize, c_imeteo,                            &
       c_nbmetd, c_nbmett, c_nbmetm, c_iatra1,       &
       c_nbmaxt, c_meteo_zi, c_iatsoil,              &
-      c_nvert, c_kvert, c_kmx)
+      c_nvert, c_kvert, c_kmx, c_tsini, c_tprini,   &
+      c_qvsini, c_ihpm, c_iqv0, c_nfatr1, c_w1ini,  &
+      c_w2ini, c_sigc, c_idrayi, c_idrayst)
 
     call c_f_pointer(c_ps, ps)
     call c_f_pointer(c_syear, syear)
@@ -833,6 +807,7 @@ contains
     call c_f_pointer(c_nbmett, nbmett)
     call c_f_pointer(c_nbmetm, nbmetm)
     call c_f_pointer(c_iatra1, iatra1)
+    call c_f_pointer(c_nfatr1, nfatr1)
     call c_f_pointer(c_nbmaxt, nbmaxt)
     call c_f_pointer(c_meteo_zi, meteo_zi)
     call c_f_pointer(c_iatsoil, iatsoil)
@@ -840,6 +815,16 @@ contains
     call c_f_pointer(c_nvert, nvert)
     call c_f_pointer(c_kvert, kvert)
     call c_f_pointer(c_kmx, kmx)
+    call c_f_pointer(c_tsini, tsini)
+    call c_f_pointer(c_tprini, tprini)
+    call c_f_pointer(c_qvsini, qvsini)
+    call c_f_pointer(c_ihpm, ihpm)
+    call c_f_pointer(c_iqv0, iqv0)
+    call c_f_pointer(c_w1ini, w1ini)
+    call c_f_pointer(c_w2ini, w2ini)
+    call c_f_pointer(c_sigc, sigc)
+    call c_f_pointer(c_idrayi, idrayi)
+    call c_f_pointer(c_idrayst, idrayst)
 
     return
 

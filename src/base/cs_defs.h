@@ -35,6 +35,10 @@
 #  include "cs_config.h"
 #endif
 
+#ifdef __cplusplus
+#include <type_traits>
+#endif
+
 /*============================================================================
  * Internationalization
  *============================================================================*/
@@ -221,6 +225,12 @@ extern "C" {
 #    define _Bool bool;
 #  endif
 #  define __bool_true_false_are_defined 1
+#endif
+
+/* C++ assert necessary for template */
+#if defined(__cplusplus)
+#include <typeinfo>
+#include "assert.h"
 #endif
 
 /* int32_t type */
@@ -550,12 +560,14 @@ typedef enum {
 #define CS_F_HOST __host__
 #define CS_F_DEVICE __device__
 #define CS_F_HOST_DEVICE __host__ __device__
+#define CS_V_CONSTANT __constant__
 
 #else
 
 #define CS_F_HOST
 #define CS_F_DEVICE
 #define CS_F_HOST_DEVICE
+#define CS_V_CONSTANT static const
 
 #endif
 
@@ -684,5 +696,110 @@ cs_get_thread_id(void)
 #ifdef __cplusplus
 }
 #endif /* __cplusplus */
+
+#ifdef __cplusplus
+
+/*=============================================================================
+ * Public C++ templates
+ *============================================================================*/
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Get the cs_datatype_t from a typename
+ *
+ * \tparam T : datatype
+ */
+/*----------------------------------------------------------------------------*/
+
+template <typename T>
+struct dependent_false : std::false_type {};
+
+template <typename T>
+static inline cs_datatype_t
+cs_datatype_from_type()
+{
+  static_assert(dependent_false<T>::value, "Unknown datatype");
+  return CS_DATATYPE_NULL;
+}
+
+/*----------------------------------------------------------------------------*/
+/* Specialized versions of the templated function */
+/*----------------------------------------------------------------------------*/
+
+template <>
+constexpr inline cs_datatype_t
+cs_datatype_from_type<char>()
+{
+  return CS_CHAR;
+}
+
+/*----------------------------------------------------------------------------*/
+
+template <>
+constexpr inline cs_datatype_t
+cs_datatype_from_type<float>()
+{
+  return CS_FLOAT;
+}
+
+/*----------------------------------------------------------------------------*/
+
+template <>
+constexpr inline cs_datatype_t
+cs_datatype_from_type<double>()
+{
+  return CS_DOUBLE;
+}
+
+/*----------------------------------------------------------------------------*/
+
+template <>
+constexpr inline cs_datatype_t
+cs_datatype_from_type<uint16_t>()
+{
+  return CS_UINT16;
+}
+
+/*----------------------------------------------------------------------------*/
+
+template <>
+constexpr inline cs_datatype_t
+cs_datatype_from_type<uint32_t>()
+{
+  return CS_UINT32;
+}
+
+/*----------------------------------------------------------------------------*/
+
+template <>
+constexpr inline cs_datatype_t
+cs_datatype_from_type<uint64_t>()
+{
+  return CS_UINT64;
+}
+
+/*----------------------------------------------------------------------------*/
+
+template <>
+constexpr inline cs_datatype_t
+cs_datatype_from_type<int32_t>()
+{
+  return CS_INT32;
+}
+
+/*----------------------------------------------------------------------------*/
+
+template <>
+constexpr inline cs_datatype_t
+cs_datatype_from_type<int64_t>()
+{
+  return CS_INT64;
+}
+
+/*----------------------------------------------------------------------------*/
+
+#endif /* __cplusplus */
+
+/*----------------------------------------------------------------------------*/
 
 #endif /* __CS_DEFS_H__ */

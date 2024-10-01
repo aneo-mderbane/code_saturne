@@ -83,6 +83,8 @@ int  cs_glob_cuda_n_mp = -1;
 static int            _cs_glob_cuda_n_streams = -1;
 static cudaStream_t  *_cs_glob_cuda_streams = nullptr;
 
+static cudaStream_t _cs_glob_stream_pf = 0;
+
 /* Allow graphs for kernel launches ? May interfere with profiling (nsys),
    so can be deactivated. */
 
@@ -101,6 +103,8 @@ bool cs_glob_cuda_allow_graph = false;
 static void
 finalize_streams_(void)
 {
+  cudaStreamDestroy(_cs_glob_stream_pf);
+
   for (int i = 0; i < _cs_glob_cuda_n_streams; i++)
     cudaStreamDestroy(_cs_glob_cuda_streams[i]);
 
@@ -213,7 +217,8 @@ cs_cuda_mem_malloc_managed(size_t        n,
   CS_CUDA_CHECK_CALL(cudaMallocManaged(&ptr, n), file_name, line_num);
 
 #if 0
-  CS_CUDA_CHECK_CALL(cudaMemPrefetchAsync (*pointer, size, cudaCpuDeviceId, 0),
+  CS_CUDA_CHECK_CALL(cudaMemPrefetchAsync (*pointer, size, cudaCpuDeviceId, \
+                                           _cs_glob_stream_pf),             \
                      file_name, line_num);
   CS_CUDA_CHECK_CALL(cudaDeviceSynchronize(), file_name, line_num);
 #endif
@@ -390,8 +395,7 @@ cs_cuda_copy_d2h_async(void        *dst,
  *
  * A safety check is added.
  *
- * \param [out]  dst   pointer to destination data
- * \param [in]   src   pointer to source data
+ * \param [out]  dst   pointer to data
  * \param [in]   size  size of data to copy
  *
  * \returns pointer to allocated memory.
@@ -399,10 +403,11 @@ cs_cuda_copy_d2h_async(void        *dst,
 /*----------------------------------------------------------------------------*/
 
 void
-cs_cuda_prefetch_h2d(void    *dst,
-                     size_t   size)
+cs_cuda_prefetch_h2d(const void  *dst,
+                     size_t       size)
 {
-  CS_CUDA_CHECK(cudaMemPrefetchAsync(dst, size, cs_glob_cuda_device_id, 0));
+  CS_CUDA_CHECK(cudaMemPrefetchAsync(dst, size, cs_glob_cuda_device_id, \
+                                     _cs_glob_stream_pf));
 }
 
 /*----------------------------------------------------------------------------*/
@@ -413,19 +418,19 @@ cs_cuda_prefetch_h2d(void    *dst,
  *
  * A safety check is added.
  *
- * \param [out]  dst   pointer to destination data
- * \param [in]   src   pointer to source data
- * \param [in]   size  size of data to copy
+ * \param [in]  dst   pointer to data
+ * \param [in]  size  size of data to copy
  *
  * \returns pointer to allocated memory.
  */
 /*----------------------------------------------------------------------------*/
 
 void
-cs_cuda_prefetch_d2h(void    *dst,
-                     size_t   size)
+cs_cuda_prefetch_d2h(const void  *dst,
+                     size_t       size)
 {
-  CS_CUDA_CHECK(cudaMemPrefetchAsync(dst, size, cudaCpuDeviceId, 0));
+  CS_CUDA_CHECK(cudaMemPrefetchAsync(dst, size, cudaCpuDeviceId, \
+                                     _cs_glob_stream_pf));
 }
 
 /*----------------------------------------------------------------------------*/
@@ -774,6 +779,10 @@ cs_base_cuda_select_default_device(void)
     =   prop.multiProcessorCount
       * (prop.maxThreadsPerMultiProcessor / prop.maxThreadsPerBlock);
   cs_glob_cuda_n_mp = prop.multiProcessorCount;
+
+  /* Create default stream for prefetching */
+  if (_cs_glob_stream_pf == 0)
+    cudaStreamCreate(&_cs_glob_stream_pf);
 
   /* Finally, determine whether we may use graphs for some kernel launches. */
 

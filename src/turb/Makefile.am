@@ -42,6 +42,7 @@ AM_CPPFLAGS = \
 -I$(top_srcdir)/src/lagr \
 -I$(top_srcdir)/src/mesh \
 -I$(top_srcdir)/src/pprt \
+-I$(top_srcdir)/src/turb \
 $(CPPFLAGS_PLE) \
 $(MPI_CPPFLAGS)
 
@@ -78,22 +79,31 @@ noinst_LIBRARIES = libcsturb.a
 
 libcsturb_a_SOURCES = \
 cs_les_balance.cpp \
-cs_les_filter.c \
-cs_les_inflow.c \
-cs_les_mu_t.c \
-cs_turbulence_bc.c \
-cs_turbulence_inflow.c \
-cs_turbulence_init.c \
+cs_les_filter.cpp \
+cs_les_inflow.cpp \
+cs_les_mu_t.cpp \
+cs_turbulence_bc.cpp \
+cs_turbulence_inflow.cpp \
+cs_turbulence_init.cpp \
 cs_turbulence_ke.cpp \
-cs_turbulence_kw.c \
-cs_turbulence_ml.c \
-cs_turbulence_model.c \
-cs_turbulence_rij.c \
-cs_turbulence_rit.c \
-cs_turbulence_rotation.c \
-cs_turbulence_sa.c \
+cs_turbulence_kw.cpp \
+cs_turbulence_ml.cpp \
+cs_turbulence_model.cpp \
+cs_turbulence_rij.cpp \
+cs_turbulence_rit.cpp \
+cs_turbulence_rotation.cpp \
+cs_turbulence_sa.cpp \
 cs_turbulence_v2f.cpp \
-cs_turbulence_htles.c
+cs_turbulence_htles.cpp
+
+# Rules for CUDA (not known by Automake)
+
+if HAVE_CUDA_CPP
+.cpp.$(OBJEXT):
+	$(NVCC) $(DEFS) $(AM_CPPFLAGS) -I$(top_srcdir)/src/base -I../.. $(NVCCFLAGS) $(NVCCFLAGS_DBG) $(NVCCFLAGS_OPT) $(NVCCFLAGS_CPP) -c -o $@ $<
+endif
+
+# Additional rules
 
 clean-local:
 	-rm -rf .deps

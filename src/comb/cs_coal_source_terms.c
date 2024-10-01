@@ -565,7 +565,8 @@ cs_coal_source_terms_scalar(int        fld_id,
       int coal_id = cm->ichcor[class_id] - 1;
 
       const cs_real_t xwatch = cm->xwatch[coal_id];
-      const cs_real_t one_d_xwatch = 1./cm->xwatch[coal_id];
+      const cs_real_t one_d_xwatch
+        = (xwatch > cs_coal_epsilon) ? 1./cm->xwatch[coal_id] : 0;
 
       const cs_real_t *cpro_csec = cs_field_by_id(cm->igmsec[class_id])->val;
       const cs_real_t *cpro_x2 = cs_field_by_id(cm->ix2[class_id])->val;
@@ -640,7 +641,7 @@ cs_coal_source_terms_scalar(int        fld_id,
       snprintf(name, 24, "n_p_%02d", class_id+1);
       name[24] = '\0';
 
-      cs_real_t *taup = cs_field_by_composite_name("drift_tau", name)->val;
+      cs_real_t *taup = cs_field_by_composite_name(name, "drift_tau")->val;
 
       const char *coo_prefix[3] = {"v_x_p_", "v_y_p_", "v_z_p_"};
       const char coo_c[3] = {'x', 'y', 'z'};

@@ -25,7 +25,7 @@
 # Files not built through classical Automake rules need to be explicitely
 # added to distribution.
 
-EXTRA_DIST = cs_solver.c
+EXTRA_DIST = cs_solver.cpp
 
 # Build flat archives
 
@@ -77,6 +77,7 @@ $(MPI_CPPFLAGS) $(CPPFLAGS_BLAS) \
 $(CPPFLAGS_MUMPS)
 
 AM_CFLAGS = $(CFLAGS_DBG) $(CFLAGS_OPT) $(CFLAGS_SHARED)
+AM_CXXFLAGS = $(CXXFLAGS_STD) $(CXXFLAGS_SYCL) $(CXXFLAGS_DBG) $(CXXFLAGS_OPT) $(CXXFLAGS_SHARED)
 
 # Global LDFLAGS must be used so as to handle the possibility of a CXX link.
 # Per-executable flags will override this global definition.
@@ -117,9 +118,9 @@ $(top_builddir)/src/meg/libcsmeg.a \
 $(top_builddir)/src/libcsmodules.a \
 $(top_builddir)/src/bft/libbft.a
 
-cs_solver = $(top_srcdir)/src/apps/cs_solver.c
+cs_solver = $(top_srcdir)/src/apps/cs_solver.cpp
 cs_solver.$(OBJEXT): $(cs_solver)
-	$(CC) -c $(DEFS) $(DEFAULT_INCLUDES) $(AM_CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) ${cs_solver}
+	$(CC) -c $(DEFS) $(DEFAULT_INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) ${cs_solver}
 
 if ENABLE_SHARED
 
@@ -179,7 +180,7 @@ endif
 
 if HAVE_FRONTEND
 cs_io_dump_CPPFLAGS = -DLOCALEDIR=\"'$(localedir)'\" -I$(top_srcdir)/src/base
-cs_io_dump_SOURCES = cs_io_dump.c
+cs_io_dump_SOURCES = cs_io_dump.cpp
 cs_io_dump_LDADD =
 endif
 

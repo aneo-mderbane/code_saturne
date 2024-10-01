@@ -65,7 +65,6 @@ use optcal
 use cstphy
 use cstnum
 use entsor
-use lagran
 use parall
 use period
 use ppppar
@@ -74,7 +73,6 @@ use ppincl
 use mesh
 use field
 use field_operator
-use turbomachinery
 use cs_c_bindings
 
 !===============================================================================

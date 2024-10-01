@@ -118,34 +118,6 @@ module cs_c_bindings
     real(c_double) :: relaxv
   end type var_cal_opt
 
-  !---------------------------------------------------------------------------
-
-  type, bind(c)  :: solving_info
-    integer(c_int) :: nbivar
-    real(c_double) :: rnsmbr
-    real(c_double) :: resvar
-    real(c_double) :: dervar
-    real(c_double) :: l2residual
-  end type solving_info
-
-  !---------------------------------------------------------------------------
-
-  type, bind(c)  :: gas_mix_species_prop
-    real(c_double) :: mol_mas
-    real(c_double) :: cp
-    real(c_double) :: vol_dif
-    real(c_double) :: mu_a
-    real(c_double) :: mu_b
-    real(c_double) :: lambda_a
-    real(c_double) :: lambda_b
-    real(c_double) :: muref
-    real(c_double) :: lamref
-    real(c_double) :: trefmu
-    real(c_double) :: treflam
-    real(c_double) :: smu
-    real(c_double) :: slam
-  end type gas_mix_species_prop
-
   !=============================================================================
 
   interface
@@ -812,32 +784,12 @@ module cs_c_bindings
 
     ! Interface to C function to get the bc type array pointer
 
-    subroutine cs_f_boundary_conditions_get_pointers(itypfb, izfppp, itrifb) &
+    subroutine cs_f_boundary_conditions_get_pointers(itypfb, izfppp) &
       bind(C, name='cs_f_boundary_conditions_get_pointers')
       use, intrinsic :: iso_c_binding
       implicit none
-      type(c_ptr), intent(out) :: itypfb, izfppp, itrifb
+      type(c_ptr), intent(out) :: itypfb, izfppp
     end subroutine cs_f_boundary_conditions_get_pointers
-
-    !---------------------------------------------------------------------------
-
-    ! Interface to C function mapping field pointers
-
-    subroutine cs_field_pointer_map_base()  &
-      bind(C, name='cs_field_pointer_map_base')
-      use, intrinsic :: iso_c_binding
-      implicit none
-    end subroutine cs_field_pointer_map_base
-
-    !---------------------------------------------------------------------------
-
-    ! Interface to C function mapping boundary field pointers
-
-    subroutine cs_field_pointer_map_boundary()  &
-      bind(C, name='cs_field_pointer_map_boundary')
-      use, intrinsic :: iso_c_binding
-      implicit none
-    end subroutine cs_field_pointer_map_boundary
 
     !---------------------------------------------------------------------------
 
@@ -887,19 +839,6 @@ module cs_c_bindings
       implicit none
       integer(c_int) :: k_id
     end function cs_gas_mix_get_field_key
-
-    !---------------------------------------------------------------------------
-
-    ! Interface to C function initializing condensation-related field key.
-
-    function cs_gas_mix_species_to_field_id(sp_id)  &
-      result(f_id) &
-      bind(C, name='cs_f_gas_mix_species_to_field_id')
-      use, intrinsic :: iso_c_binding
-      implicit none
-      integer(c_int), value :: sp_id
-      integer(c_int) :: f_id
-    end function cs_gas_mix_species_to_field_id
 
     !---------------------------------------------------------------------------
 
@@ -1117,17 +1056,6 @@ module cs_c_bindings
 
     ! Interface to C function incrementing time step
 
-    subroutine cs_time_step_increment(dt) &
-      bind(C, name='cs_time_step_increment')
-      use, intrinsic :: iso_c_binding
-      implicit none
-      real(kind=c_double), value :: dt
-    end subroutine cs_time_step_increment
-
-    !---------------------------------------------------------------------------
-
-    ! Interface to C function incrementing time step
-
     subroutine cs_time_step_update_dt(dt) &
       bind(C, name='cs_time_step_update_dt')
       use, intrinsic :: iso_c_binding
@@ -1146,17 +1074,6 @@ module cs_c_bindings
       character(kind=c_char, len=1), dimension(*), intent(in)  :: name
       integer(c_int)                                           :: id
     end function cs_timer_stats_id_by_name
-
-    !---------------------------------------------------------------------------
-
-    ! Interface to C function computing turbulence rotation correction
-
-    subroutine cs_turbulence_rotation_correction(dt, rotfct, ce2rc) &
-      bind(C, name='cs_turbulence_rotation_correction')
-      use, intrinsic :: iso_c_binding
-      implicit none
-      real(kind=c_double), dimension(*) :: dt, rotfct, ce2rc
-    end subroutine cs_turbulence_rotation_correction
 
     !---------------------------------------------------------------------------
 
@@ -1237,55 +1154,6 @@ module cs_c_bindings
 
     !---------------------------------------------------------------------------
 
-    ! Interface to C function building volume zones.
-
-    subroutine cs_volume_zone_build_all(mesh_modified)  &
-      bind(C, name='cs_volume_zone_build_all')
-      use, intrinsic :: iso_c_binding
-      implicit none
-      logical(kind=c_bool), value :: mesh_modified
-    end subroutine cs_volume_zone_build_all
-
-    !---------------------------------------------------------------------------
-
-    ! Interface to C function returning the number of volume zones
-    ! associated with a given zone flag
-
-    function cs_volume_zone_n_type_zones(type_flag) result(n)   &
-      bind(C, name='cs_volume_zone_n_type_zones')
-      use, intrinsic :: iso_c_binding
-      implicit none
-      integer(c_int), value                            :: type_flag
-      integer(c_int)                                   :: n
-    end function cs_volume_zone_n_type_zones
-
-    !---------------------------------------------------------------------------
-
-    ! Interface to C function returning the number of volume zone cells
-    ! associated with a given zone flag
-
-    function cs_volume_zone_n_type_cells(type_flag) result(n)   &
-      bind(C, name='cs_volume_zone_n_type_cells')
-      use, intrinsic :: iso_c_binding
-      implicit none
-      integer(c_int), value                            :: type_flag
-      integer(c_int)                                   :: n
-    end function cs_volume_zone_n_type_cells
-
-    !---------------------------------------------------------------------------
-
-    ! Interface to C function selecting cells in volume zones.
-
-    subroutine cs_volume_zone_select_type_cells(type_flag, cell_ids)  &
-      bind(C, name='cs_volume_zone_select_type_cells')
-      use, intrinsic :: iso_c_binding
-      implicit none
-      integer(c_int), value :: type_flag
-      type(c_ptr), value :: cell_ids
-    end subroutine cs_volume_zone_select_type_cells
-
-    !---------------------------------------------------------------------------
-
     ! Interface to C user function for boundary conditions
 
     subroutine user_boundary_conditions(bc_type)  &
@@ -1314,50 +1182,6 @@ module cs_c_bindings
       use, intrinsic :: iso_c_binding
       implicit none
     end subroutine user_initialization
-
-    !---------------------------------------------------------------------------
-
-    ! Interface to C user function
-
-    subroutine user_source_terms(f_id, st_exp, st_imp)  &
-      bind(C, name='cs_user_source_terms_wrapper')
-      use, intrinsic :: iso_c_binding
-      implicit none
-      integer(c_int), value :: f_id
-      real(kind=c_double), dimension(*), intent(inout) :: st_exp, st_imp
-    end subroutine user_source_terms
-
-    !---------------------------------------------------------------------------
-
-    ! Interface to C user function for physical model options
-
-    subroutine cs_user_model()  &
-      bind(C, name='cs_user_model')
-      use, intrinsic :: iso_c_binding
-      implicit none
-    end subroutine cs_user_model
-
-    !---------------------------------------------------------------------------
-
-    ! Interface to C user function for time moments
-
-    subroutine cs_user_time_moments()  &
-      bind(C, name='cs_user_time_moments')
-      use, intrinsic :: iso_c_binding
-      implicit none
-    end subroutine cs_user_time_moments
-
-    !---------------------------------------------------------------------------
-
-    ! Interface to C function for the destruction of a locator structure.
-
-    function ple_locator_destroy(this_locator) result (l) &
-      bind(C, name='ple_locator_destroy')
-      use, intrinsic :: iso_c_binding
-      implicit none
-      type(c_ptr), value :: this_locator
-      type(c_ptr) :: l
-    end function ple_locator_destroy
 
     !---------------------------------------------------------------------------
 
@@ -1419,29 +1243,6 @@ module cs_c_bindings
     end subroutine gas_mix_add_species
 
     !---------------------------------------------------------------------------
-    !> \brief Set wall condensation model
-    !
-    !> \param[in]   model     Integer related to the choice of model
-    !---------------------------------------------------------------------------
-
-    subroutine cs_wall_condensation_set_model(model)   &
-      bind(C, name='cs_wall_condensation_set_model')
-      use, intrinsic :: iso_c_binding
-      implicit none
-      integer(c_int), intent(in), value :: model
-    end subroutine cs_wall_condensation_set_model
-
-    !---------------------------------------------------------------------------
-
-    !> \brief Compute gas chemistry + aerosol dynamic with external code
-
-    subroutine cs_atmo_aerosol_time_advance() &
-      bind(C, name='cs_atmo_aerosol_time_advance')
-      use, intrinsic :: iso_c_binding
-      implicit none
-    end subroutine cs_atmo_aerosol_time_advance
-
-    !---------------------------------------------------------------------------
 
     !> \brief Get the aerosols concentrations and numbers from aerosol code
 
@@ -1462,17 +1263,6 @@ module cs_c_bindings
       implicit none
       real(kind=c_double), dimension(*), intent(out) :: array
     end subroutine cs_atmo_aerosol_get_gas
-
-    !---------------------------------------------------------------------------
-
-    !> \brief Compute the relative ground elevation (mainly for the atmospheric
-    !>  module).
-
-    subroutine cs_atmo_z_ground_compute() &
-      bind(C, name='cs_atmo_z_ground_compute')
-      use, intrinsic :: iso_c_binding
-      implicit none
-    end subroutine cs_atmo_z_ground_compute
 
     !---------------------------------------------------------------------------
 
@@ -1597,6 +1387,16 @@ module cs_c_bindings
       implicit none
       real(kind=c_double), dimension(*), intent(inout) :: liq_mass_flow
     end subroutine cs_ctwr_init_flow_vars
+
+    !---------------------------------------------------------------------------
+
+    ! Interface to C function for atmospheric module
+
+    subroutine cs_atmo_phyvar_update()             &
+      bind(C, name='cs_atmo_phyvar_update')
+      use, intrinsic :: iso_c_binding
+      implicit none
+    end subroutine cs_atmo_phyvar_update
 
     !---------------------------------------------------------------------------
 
@@ -1748,17 +1548,6 @@ module cs_c_bindings
 
     !---------------------------------------------------------------------------
 
-    ! Set has_disable_flag
-
-    subroutine cs_porous_model_set_has_disable_flag(flag)   &
-      bind(C, name='cs_porous_model_set_has_disable_flag')
-      use, intrinsic :: iso_c_binding
-      implicit none
-      integer(kind=c_int), value :: flag
-    end subroutine cs_porous_model_set_has_disable_flag
-
-    !---------------------------------------------------------------------------
-
     ! Set porosity model.
 
     subroutine cs_porous_model_set_model(iporos)   &
@@ -1794,16 +1583,6 @@ module cs_c_bindings
       implicit none
       type(c_ptr), intent(out) :: compute_porosity_from_scan
     end subroutine cs_f_porosity_from_scan_get_pointer
-
-    !---------------------------------------------------------------------------
-
-    ! Interface to C function to count number of buoyant scalars.
-
-    subroutine cs_velocity_pressure_set_n_buoyant_scalars()   &
-      bind(C, name='cs_velocity_pressure_set_n_buoyant_scalars')
-      use, intrinsic :: iso_c_binding
-      implicit none
-    end subroutine cs_velocity_pressure_set_n_buoyant_scalars
 
     !---------------------------------------------------------------------------
 
@@ -2289,95 +2068,6 @@ contains
 
   !=============================================================================
 
-  !> \brief Assign a solving_info for a cs_solving_info_t key to a field.
-
-  !> If the field category is not compatible, a fatal error is provoked.
-
-  !> \param[in]   f_id     field id
-  !> \param[in]   k_value  structure associated with key
-
-  subroutine field_set_key_struct_solving_info (f_id, k_value)
-
-    use, intrinsic :: iso_c_binding
-    implicit none
-
-    ! Arguments
-
-    integer, intent(in)                    :: f_id
-    type(solving_info), intent(in), target :: k_value
-
-    ! Local variables
-
-    integer(c_int)                   :: c_f_id
-    type(solving_info), pointer      :: p_k_value
-    type(c_ptr)                      :: c_k_value
-    character(len=12+1, kind=c_char) :: c_name
-
-    integer(c_int), save           :: c_k_id = -1
-
-    if (c_k_id .eq. -1) then
-      c_name = "solving_info"//c_null_char
-      c_k_id = cs_f_field_key_id(c_name)
-    endif
-
-    c_f_id = f_id
-
-    p_k_value => k_value
-    c_k_value = c_loc(p_k_value)
-
-    call cs_f_field_set_key_struct(c_f_id, c_k_id, c_k_value)
-
-    return
-
-  end subroutine field_set_key_struct_solving_info
-
-  !=============================================================================
-
-  !> \brief Assign a gas_mix_species_prop for a cs_gas_mix_species_prop_t
-  !> key to a field.
-
-  !> If the field category is not compatible, a fatal error is provoked.
-
-  !> \param[in]   f_id     field id
-  !> \param[in]   k_value  structure associated with key
-
-  subroutine field_set_key_struct_gas_mix_species_prop(f_id, k_value)
-
-    use, intrinsic :: iso_c_binding
-    implicit none
-
-    ! Arguments
-
-    integer, intent(in)                               :: f_id
-    type(gas_mix_species_prop), intent(in), target :: k_value
-
-    ! Local variables
-
-    integer(c_int)                             :: c_f_id
-    type(gas_mix_species_prop),pointer      :: p_k_value
-    type(c_ptr)                                :: c_k_value
-    character(len=23+1, kind=c_char)           :: c_name
-
-    integer(c_int), save           :: c_k_id = -1
-
-    if (c_k_id .eq. -1) then
-      c_name = "gas_mix_species_prop"//c_null_char
-      c_k_id = cs_f_field_key_id(c_name)
-    endif
-
-    c_f_id = f_id
-
-    p_k_value => k_value
-    c_k_value = c_loc(p_k_value)
-
-    call cs_f_field_set_key_struct(c_f_id, c_k_id, c_k_value)
-
-    return
-
-  end subroutine field_set_key_struct_gas_mix_species_prop
-
-  !=============================================================================
-
   !> \brief Return a pointer to the var_cal_opt structure for cs_var_cal_opt key
   !> associated with a field.
 
@@ -2412,88 +2102,6 @@ contains
     return
 
   end subroutine field_get_key_struct_var_cal_opt
-
-  !=============================================================================
-
-  !> \brief Return a pointer to the solving_info structure for
-  !>        cs_solving_info_t key associated with a field.
-
-  !> If the field category is not compatible, a fatal error is provoked.
-
-  !> \param[in]   f_id     field id
-  !> \param[out]  k_value  integer value associated with key id for this field
-
-  subroutine field_get_key_struct_solving_info(f_id, k_value)
-
-    use, intrinsic :: iso_c_binding
-    implicit none
-
-    ! Arguments
-
-    integer, intent(in)                       :: f_id
-    type(solving_info), intent(inout), target :: k_value
-
-    ! Local variables
-
-    integer(c_int)                   :: c_f_id, c_k_id
-    type(solving_info), pointer      :: p_k_value
-    type(c_ptr)                      :: c_k_value
-    character(len=12+1, kind=c_char) :: c_name
-
-    c_name = "solving_info"//c_null_char
-    c_k_id = cs_f_field_key_id(c_name)
-
-    c_f_id = f_id
-
-    p_k_value => k_value
-    c_k_value = c_loc(p_k_value)
-
-    call cs_f_field_get_key_struct(c_f_id, c_k_id, c_k_value)
-
-    return
-
-  end subroutine field_get_key_struct_solving_info
-
-  !=============================================================================
-
-  !> \brief Return a pointer to the gas_mix_species_prop structure for
-  !>        cs_gas_mix_species_prop_t key associated with a field.
-
-  !> If the field category is not compatible, a fatal error is provoked.
-
-  !> \param[in]   f_id     field id
-  !> \param[out]  k_value  integer value associated with key id for this field
-
-  subroutine field_get_key_struct_gas_mix_species_prop (f_id, k_value)
-
-    use, intrinsic :: iso_c_binding
-    implicit none
-
-    ! Arguments
-
-    integer, intent(in)                                  :: f_id
-    type(gas_mix_species_prop), intent(inout), target :: k_value
-
-    ! Local variables
-
-    integer(c_int)                             :: c_f_id, c_k_id
-    type(gas_mix_species_prop),pointer      :: p_k_value
-    type(c_ptr)                                :: c_k_value
-    character(len=23+1, kind=c_char)           :: c_name
-
-    c_name = "gas_mix_species_prop"//c_null_char
-    c_k_id = cs_f_field_key_id(c_name)
-
-    c_f_id = f_id
-
-    p_k_value => k_value
-    c_k_value = c_loc(p_k_value)
-
-    call cs_f_field_get_key_struct(c_f_id, c_k_id, c_k_value)
-
-    return
-
-  end subroutine field_get_key_struct_gas_mix_species_prop
 
   !=============================================================================
 
@@ -2540,27 +2148,6 @@ contains
                             epsrgp, climgp, pvar, grad)
 
   end subroutine gradient_hn_s
-
-  !=============================================================================
-
-  !> \brief Destruction of a locator structure.
-
-  !> \param[in, out]   this_locator
-
-  subroutine locator_destroy(this_locator)
-
-    use, intrinsic :: iso_c_binding
-    implicit none
-
-    ! Arguments
-
-    type(c_ptr) :: this_locator
-
-    ! Local variables
-
-    this_locator = ple_locator_destroy(this_locator)
-
-  end subroutine locator_destroy
 
   !=============================================================================
 
@@ -2624,7 +2211,7 @@ contains
 
   !> \param[in, out]  bc_type  boundary face types
 
-  subroutine user_f_boundary_conditions(itrifb, itypfb, izfppp, dt)  &
+  subroutine user_f_boundary_conditions(itypfb, izfppp, dt)  &
     bind(C, name='cs_f_user_boundary_conditions_wrapper')
 
     use dimens
@@ -2633,7 +2220,6 @@ contains
 
     ! Arguments
 
-    integer(kind=c_int), dimension(*), intent(in) :: itrifb
     integer(kind=c_int), dimension(*), intent(inout) :: itypfb, izfppp
     real(c_double), dimension(*), intent(in) :: dt
 
@@ -2649,7 +2235,7 @@ contains
     call field_build_bc_codes_all(icodcl, rcodcl) ! Get map
 
     call cs_f_user_boundary_conditions &
-          (nvar, nscal, icodcl, itrifb, itypfb, izfppp, dt, rcodcl)
+          (nvar, nscal, icodcl, c_null_ptr, itypfb, izfppp, dt, rcodcl)
 
   end subroutine user_f_boundary_conditions
 
@@ -2814,90 +2400,6 @@ contains
     return
 
   end subroutine variable_cdo_field_create
-
-  !=============================================================================
-
-  !> \brief Return the number of volume zones associated with a given type flag.
-
-  !> \param[in]   type_flag   type flag queried
-
-  function volume_zone_n_type_zones(type_flag) result(n)
-
-    use, intrinsic :: iso_c_binding
-    implicit none
-
-    ! Arguments
-
-    integer :: type_flag, n
-
-    ! Local variables
-
-    integer(c_int) :: c_type_flag, c_count
-
-    c_type_flag = type_flag
-    c_count = cs_volume_zone_n_type_zones(c_type_flag)
-    n = c_count
-
-  end function volume_zone_n_type_zones
-
-  !=============================================================================
-
-  !> \brief Return the number of volume zone cells associated with a given
-  !>        type flag.
-
-  !> \param[in]   type_flag   type flag queried
-
-  function volume_zone_n_type_cells(type_flag) result(n)
-
-    use, intrinsic :: iso_c_binding
-    implicit none
-
-    ! Arguments
-
-    integer :: type_flag, n
-
-    ! Local variables
-
-    integer(c_int) :: c_type_flag, c_count
-
-    c_type_flag = type_flag
-    c_count = cs_volume_zone_n_type_cells(c_type_flag)
-    n = c_count
-
-  end function volume_zone_n_type_cells
-
-  !=============================================================================
-
-  !> \brief Return the list of volume zone cells associated with a given
-  !>        type flag.
-
-  !> \param[in]   type_flag   type flag queried
-  !> \param[out]  cell_list   list of cells
-
-  subroutine volume_zone_select_type_cells(type_flag, cell_list)
-
-    use, intrinsic :: iso_c_binding
-    implicit none
-
-    ! Arguments
-
-    integer :: type_flag
-    integer, dimension(*), intent(out), target :: cell_list
-
-    ! Local variables
-
-    integer(c_int) :: c_type_flag, c_count, i
-    type(c_ptr) :: c_cell_list
-
-    c_type_flag = type_flag
-    c_cell_list = c_loc(cell_list)
-    c_count = volume_zone_n_type_cells(c_type_flag)
-    call cs_volume_zone_select_type_cells(c_type_flag, c_cell_list)
-    do i = 1, c_count
-      cell_list(i) = cell_list(i) + 1
-    enddo
-
-  end subroutine volume_zone_select_type_cells
 
   !=============================================================================
 

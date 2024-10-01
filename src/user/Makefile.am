@@ -55,7 +55,7 @@ AM_CPPFLAGS = \
 $(CPPFLAGS_PLE) \
 $(MPI_CPPFLAGS)
 
-AM_CFLAGS = $(CFLAGS_DBG) $(CFLAGS_OPT) $(CFLAGS_SHARED)
+AM_CXXFLAGS = $(CXXFLAGS_STD) $(CXXFLAGS_SYCL) $(CXXFLAGS_DBG) $(CXXFLAGS_OPT) $(CXXFLAGS_SHARED)
 
 AM_FCFLAGS = \
 $(FCMODINCLUDE)$(top_builddir)/src \
@@ -84,38 +84,38 @@ cs_user_parameters.f90
 # Library source files
 
 userfiles = \
-cs_user_1d_wall_thermal.c \
+cs_user_1d_wall_thermal.cpp \
 cs_user_atmospheric_model.f90 \
-cs_user_boundary_conditions.c \
-cs_user_coupling.c \
-cs_user_electric_scaling.c \
-cs_user_extra_operations.c \
-cs_user_fluid_structure_interaction.c \
-cs_user_head_losses.c \
-cs_user_hgn.c \
-cs_user_ibm.c \
-cs_user_ibm_modify.c \
-cs_user_initialization.c \
-cs_user_lagr_model.c \
-cs_user_lagr_particle.c \
-cs_user_lagr_boundary_conditions.c \
-cs_user_lagr_volume_conditions.c \
-cs_user_les_inflow.c \
-cs_user_mesh.c \
-cs_user_paramedmem_coupling.c \
-cs_user_parameters.c \
-cs_user_performance_tuning.c \
-cs_user_physical_properties.c \
-cs_user_postprocess.c \
-cs_user_porosity.c \
-cs_user_radiative_transfer.c \
-cs_user_radiative_transfer_bcs.c \
-cs_user_solver.c \
-cs_user_source_terms.c \
-cs_user_time_table.c \
-cs_user_turbomachinery.c \
-cs_user_wall_condensation.c \
-cs_user_zones.c \
+cs_user_boundary_conditions.cpp \
+cs_user_coupling.cpp \
+cs_user_electric_scaling.cpp \
+cs_user_extra_operations.cpp \
+cs_user_fluid_structure_interaction.cpp \
+cs_user_head_losses.cpp \
+cs_user_hgn.cpp \
+cs_user_ibm.cpp \
+cs_user_ibm_modify.cpp \
+cs_user_initialization.cpp \
+cs_user_lagr_model.cpp \
+cs_user_lagr_particle.cpp \
+cs_user_lagr_boundary_conditions.cpp \
+cs_user_lagr_volume_conditions.cpp \
+cs_user_les_inflow.cpp \
+cs_user_mesh.cpp \
+cs_user_paramedmem_coupling.cpp \
+cs_user_parameters.cpp \
+cs_user_performance_tuning.cpp \
+cs_user_physical_properties.cpp \
+cs_user_postprocess.cpp \
+cs_user_porosity.cpp \
+cs_user_radiative_transfer.cpp \
+cs_user_radiative_transfer_bcs.cpp \
+cs_user_solver.cpp \
+cs_user_source_terms.cpp \
+cs_user_time_table.cpp \
+cs_user_turbomachinery.cpp \
+cs_user_wall_condensation.cpp \
+cs_user_zones.cpp \
 usatch.f90
 
 # Special treatment for files existing both in f90 and C:
@@ -155,13 +155,18 @@ clean-local:
 	-rm -f *__genmod.f90 *__genmod.mod
 	-rm -rf .deps
 
+if HAVE_CUDA_CPP
+.cpp.$(OBJEXT):
+	$(NVCC) $(DEFS) $(AM_CPPFLAGS) -I$(top_srcdir)/src/user -I../.. $(NVCCFLAGS) $(NVCCFLAGS_DBG) $(NVCCFLAGS_OPT) $(NVCCFLAGS_CPP) -c -o $@ $<
+endif
+
 # Finish user files installation
 # - tag with the package version number
 # - remove the test preventing from using a source file
 # Done with two sed passes (does not work otherwise)
 
 install-data-hook:
-	c_user_files=`ls ${top_srcdir}/src/user/*.c 2>/dev/null`; \
+	c_user_files=`ls ${top_srcdir}/src/user/*.c* 2>/dev/null`; \
 	for f in $${c_user_files}; do \
 	  file=`basename "$${f}"` && \
 	  $(PYTHON) "${top_srcdir}/build-aux/cs_user_src_filter.py" "$(cs_version_short)" < "${top_srcdir}/src/user/$${file}" > "$(DESTDIR)$(userdir)/$${file}"; \
@@ -171,10 +176,7 @@ install-data-hook:
 	stubvers="^\!VERS\n"; \
 	version1="\!                      code_saturne version $(cs_version_short)\n"; \
 	version2="\!                      ------------------------"; \
-	comment1="^\! TEST_TO_REMOVE_FOR_USE_OF_SUBROUTINE_START"; \
-	comment2="^\! TEST_TO_REMOVE_FOR_USE_OF_SUBROUTINE_END"; \
 	for file in $${f90_user_files}; do \
-	  $(SED) -e "N;s/$${stubvers}/$${version1}$${version2}/" < "$${file}" | \
-	  $(SED) -e "/$${comment1}/,/$${comment2}/d" > "$${file}.tmp" && \
+	  $(SED) -e "N;s/$${stubvers}/$${version1}$${version2}/" < "$${file}" > "$${file}.tmp" && \
 	  mv "$${file}.tmp" "$${file}"; \
 	done

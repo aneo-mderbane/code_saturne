@@ -50,6 +50,7 @@ $(CPPFLAGS_PLE) \
 $(MPI_CPPFLAGS)
 
 AM_CFLAGS = $(CFLAGS_DBG) $(CFLAGS_OPT) $(CFLAGS_SHARED)
+AM_CXXFLAGS = $(CXXFLAGS_STD) $(CXXFLAGS_SYCL) $(CXXFLAGS_DBG) $(CXXFLAGS_OPT) $(CXXFLAGS_SHARED)
 
 AM_FCFLAGS = \
 $(FCMODINCLUDE)$(top_builddir)/src \
@@ -117,6 +118,15 @@ cs_steady_laminar_flamelet_bcond.f90 \
 cs_steady_laminar_flamelet_physical_prop.f90 \
 cs_steady_laminar_flamelet_verify.f90 \
 cs_steady_laminar_flamelet_read_base.f90
+
+# Rules for CUDA (not known by Automake)
+
+if HAVE_CUDA_CPP
+.cpp.$(OBJEXT):
+	$(NVCC) $(DEFS) $(AM_CPPFLAGS) -I$(top_srcdir)/src/base -I../.. $(NVCCFLAGS) $(NVCCFLAGS_DBG) $(NVCCFLAGS_OPT) $(NVCCFLAGS_CPP) -c -o $@ $<
+endif
+
+# Additional rules
 
 clean-local:
 	-rm -f *__genmod.f90 *.mod

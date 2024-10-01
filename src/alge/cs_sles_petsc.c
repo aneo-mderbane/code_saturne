@@ -51,6 +51,22 @@
 #include <petscvec.h>
 
 /*----------------------------------------------------------------------------
+ * HPDDM headers
+ *----------------------------------------------------------------------------*/
+
+#if defined(PETSC_HAVE_HPDDM)
+#include <HPDDM.hpp>
+#endif
+
+/*----------------------------------------------------------------------------
+ * SLEPs headers
+ *----------------------------------------------------------------------------*/
+
+#if defined(PETSC_HAVE_SLEPC)
+#include <slepcversion.h>
+#endif
+
+/*----------------------------------------------------------------------------
  * Local headers
  *----------------------------------------------------------------------------*/
 
@@ -71,6 +87,7 @@
  *  Header for the current file
  *----------------------------------------------------------------------------*/
 
+#include "cs_param_sles.h"
 #include "cs_sles.h"
 #include "cs_sles_petsc.h"
 
@@ -469,6 +486,313 @@ _cs_ksp_converged(KSP                  ksp,
   return KSPConvergedDefault(ksp, n, rnorm, reason, sd->cctx);
 }
 
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Setup HPDDM preconditionner.
+ *        Create auxiliary matrix for coarse solver
+ *
+ * \param[in, out]  context    pointer to iterative solver info and context
+ *                             (actual type: cs_sles_petsc_t  *)
+ * \param[in]       name       pointer to system name
+ * \param[in]       a          associated matrix
+ */
+/*----------------------------------------------------------------------------*/
+
+static void
+_cs_sles_hpddm_setup(void *context, const char *name, const cs_matrix_t *a)
+{
+#ifdef PETSC_HAVE_HPDDM
+
+  cs_timer_t t0;
+  t0 = cs_timer_time();
+
+  PetscLogStagePush(_log_stage[0]);
+
+  cs_sles_petsc_t       *c  = context;
+  cs_sles_petsc_setup_t *sd = c->setup_data;
+
+  assert(sd != NULL);
+
+  const cs_matrix_type_t cs_mat_type = cs_matrix_get_type(a);
+  const PetscInt         n_rows      = cs_matrix_get_n_rows(a);
+  const PetscInt         n_cols      = cs_matrix_get_n_columns(a);
+  const PetscInt         db_size     = cs_matrix_get_diag_block_size(a);
+  const PetscInt         eb_size     = cs_matrix_get_extra_diag_block_size(a);
+  const cs_halo_t       *halo        = cs_matrix_get_halo(a);
+
+  bool have_perio = false;
+  if (halo != NULL) {
+    if (halo->n_transforms > 0)
+      have_perio = true;
+  }
+
+  /* Setup local auxiliary matix and numbering */
+  IS  auxIS;
+  Mat auxMat;
+
+  /* Check type of input matrix */
+
+  if (strncmp(cs_matrix_get_type_name(a), "PETSc", 5) == 0) {
+    bft_error(__FILE__,
+              __LINE__,
+              0,
+              _("Matrix type %s for system \"%s\"\n"
+                "is not usable by HPDDM."),
+              cs_matrix_get_type_name(a),
+              name);
+  }
+  else if (strcmp(c->matype_r, MATSHELL) == 0 || (have_perio && n_rows > 1)
+           || cs_mat_type == CS_MATRIX_NATIVE) {
+
+    bft_error(__FILE__,
+              __LINE__,
+              0,
+              _("Matrix type %s for system \"%s\"\n"
+                "is not usable by HPDDM."),
+              cs_matrix_get_type_name(a),
+              name);
+  }
+  if (db_size == 1 && cs_mat_type == CS_MATRIX_CSR
+      && (strcmp(c->matype_r, MATMPIAIJ) == 0
+          || (strcmp(c->matype_r, MATAIJ) == 0 && cs_glob_n_ranks > 1))) {
+
+    bft_error(__FILE__,
+              __LINE__,
+              0,
+              _("Matrix type %s with block size %d for system \"%s\"\n"
+                "is not usable by HPDDM."),
+              cs_matrix_get_type_name(a),
+              (int)db_size,
+              name);
+  }
+  else if (sizeof(PetscInt) == sizeof(cs_lnum_t) && db_size == 1
+           && cs_mat_type == CS_MATRIX_CSR
+           && (strcmp(c->matype_r, MATSEQAIJ) == 0
+               || (strcmp(c->matype_r, MATAIJ) == 0 && cs_glob_n_ranks == 1))) {
+
+    bft_error(__FILE__,
+              __LINE__,
+              0,
+              _("Matrix type %s with block size %d for system \"%s\"\n"
+                "is not usable by HPDDM."),
+              cs_matrix_get_type_name(a),
+              (int)db_size,
+              name);
+  }
+  else {
+
+    assert(cs_mat_type != CS_MATRIX_NATIVE);
+
+    /* Fill IS from global numbering */
+
+    const cs_gnum_t *grow_id = cs_matrix_get_block_row_g_id(a);
+
+    PetscInt *gnum = NULL;
+    assert(n_rows <= n_cols);
+    BFT_MALLOC(gnum, n_cols, PetscInt);
+
+    for (int i = 0; i < n_cols; i++) {
+      gnum[i] = grow_id[i];
+    }
+
+    ISCreateGeneral(PETSC_COMM_SELF, n_cols, gnum, PETSC_COPY_VALUES, &auxIS);
+
+    BFT_FREE(gnum);
+
+    /* Create local Neumann matrix with ghost */
+
+    MatCreate(PETSC_COMM_SELF, &auxMat);
+    MatSetType(auxMat, MATSEQAIJ);
+    MatSetSizes(auxMat,
+                n_cols,        /* Number of local rows */
+                n_cols,        /* Number of local columns */
+                PETSC_DECIDE,  /* Number of global rows */
+                PETSC_DECIDE); /* Number of global columns */
+    MatSetUp(auxMat);
+
+    /* Preallocate */
+
+    PetscInt *d_nnz;
+    BFT_MALLOC(d_nnz, n_cols * db_size, PetscInt);
+
+    if (cs_mat_type == CS_MATRIX_CSR || cs_mat_type == CS_MATRIX_MSR) {
+
+      const cs_lnum_t *a_row_index, *a_col_id;
+      const cs_real_t *a_val;
+      const cs_real_t *d_val = NULL;
+
+      if (cs_mat_type == CS_MATRIX_CSR) {
+
+        cs_matrix_get_csr_arrays(a, &a_row_index, &a_col_id, &a_val);
+
+        for (cs_lnum_t row_id = 0; row_id < n_rows; row_id++) {
+          for (cs_lnum_t kk = 0; kk < db_size; kk++) {
+            d_nnz[row_id * db_size + kk] = 0;
+          }
+        }
+      }
+      else {
+
+        cs_matrix_get_msr_arrays(a, &a_row_index, &a_col_id, &d_val, &a_val);
+
+        for (cs_lnum_t row_id = 0; row_id < n_rows; row_id++) {
+          for (cs_lnum_t kk = 0; kk < db_size; kk++) {
+            d_nnz[row_id * db_size + kk] = db_size;
+          }
+        }
+      }
+
+      for (cs_lnum_t row_id = 0; row_id < n_rows; row_id++) {
+        for (cs_lnum_t i = a_row_index[row_id]; i < a_row_index[row_id + 1];
+             i++) {
+          for (cs_lnum_t kk = 0; kk < db_size; kk++)
+            d_nnz[row_id * db_size + kk] += eb_size;
+
+          cs_lnum_t col_id = a_col_id[i];
+          if (col_id >= n_rows) {
+            for (cs_lnum_t kk = 0; kk < db_size; kk++)
+              d_nnz[col_id * db_size + kk] += eb_size;
+          }
+        }
+      }
+    }
+    else {
+      bft_error(__FILE__,
+                __LINE__,
+                0,
+                _("Matrix type %s with block size %d for system \"%s\"\n"
+                  "is not usable by PETSc."),
+                cs_matrix_get_type_name(a),
+                (int)db_size,
+                name);
+    }
+
+    /* Now preallocate matrix */
+
+    MatSeqAIJSetPreallocation(auxMat, 0, d_nnz);
+
+    BFT_FREE(d_nnz);
+
+    /* Now set matrix values, depending on type */
+
+    if (cs_mat_type == CS_MATRIX_CSR || cs_mat_type == CS_MATRIX_MSR) {
+
+      const cs_lnum_t *a_row_index, *a_col_id;
+      const cs_real_t *a_val;
+      const cs_real_t *d_val = NULL;
+
+      PetscInt m = 1, n = 1;
+
+      if (cs_mat_type == CS_MATRIX_CSR)
+        cs_matrix_get_csr_arrays(a, &a_row_index, &a_col_id, &a_val);
+
+      else {
+
+        cs_matrix_get_msr_arrays(a, &a_row_index, &a_col_id, &d_val, &a_val);
+
+        const cs_lnum_t b_size   = cs_matrix_get_diag_block_size(a);
+        const cs_lnum_t b_size_2 = b_size * b_size;
+
+        for (cs_lnum_t b_id = 0; b_id < n_rows; b_id++) {
+          for (cs_lnum_t ii = 0; ii < db_size; ii++) {
+            for (cs_lnum_t jj = 0; jj < db_size; jj++) {
+              PetscInt    idxm[] = { b_id * db_size + ii };
+              PetscInt    idxn[] = { b_id * db_size + jj };
+              PetscScalar v[] = { d_val[b_id * b_size_2 + ii * b_size + jj] };
+              MatSetValues(auxMat, m, idxm, n, idxn, v, INSERT_VALUES);
+            }
+          }
+        }
+      }
+
+      const cs_lnum_t b_size   = cs_matrix_get_extra_diag_block_size(a);
+      const cs_lnum_t b_size_2 = b_size * b_size;
+
+      /* TODONP: il n'y a pas le recouvrement pour le moment */
+      /* TODONP: il manque le bloc diagonal du recouvrement */
+      if (b_size == 1) {
+
+        for (cs_lnum_t row_id = 0; row_id < n_rows; row_id++) {
+          for (cs_lnum_t i = a_row_index[row_id]; i < a_row_index[row_id + 1];
+               i++) {
+
+            cs_lnum_t col_id = a_col_id[i];
+
+            for (cs_lnum_t kk = 0; kk < db_size; kk++) {
+              PetscInt    idxm[] = { row_id * db_size + kk };
+              PetscInt    idxn[] = { col_id * db_size + kk };
+              PetscScalar v[]    = { a_val[i] };
+              MatSetValues(auxMat, m, idxm, n, idxn, v, INSERT_VALUES);
+            }
+
+            if (col_id >= n_rows) {
+              for (cs_lnum_t kk = 0; kk < db_size; kk++) {
+                PetscInt    idxm[] = { col_id * db_size + kk };
+                PetscInt    idxn[] = { row_id * db_size + kk };
+                PetscScalar v[]    = { a_val[i] };
+                MatSetValues(auxMat, m, idxm, n, idxn, v, INSERT_VALUES);
+              }
+            }
+          }
+        }
+      }
+      else {
+
+        for (cs_lnum_t row_id = 0; row_id < n_rows; row_id++) {
+          for (cs_lnum_t i = a_row_index[row_id]; i < a_row_index[row_id + 1];
+               i++) {
+            cs_lnum_t col_id = a_col_id[i];
+
+            for (cs_lnum_t ii = 0; ii < db_size; ii++) {
+              PetscInt idxm[] = { row_id * db_size + ii };
+              for (cs_lnum_t jj = 0; jj < db_size; jj++) {
+                PetscInt    idxn[] = { col_id * db_size + jj };
+                PetscScalar v[]    = { d_val[i * b_size_2 + ii * b_size + jj] };
+                MatSetValues(auxMat, m, idxm, n, idxn, v, INSERT_VALUES);
+              }
+            }
+
+            if (col_id >= n_rows) {
+              for (cs_lnum_t ii = 0; ii < db_size; ii++) {
+                PetscInt idxm[] = { col_id * db_size + ii };
+                for (cs_lnum_t jj = 0; jj < db_size; jj++) {
+                  PetscInt    idxn[] = { row_id * db_size + jj };
+                  PetscScalar v[] = { d_val[i * b_size_2 + ii * b_size + jj] };
+                  MatSetValues(auxMat, m, idxm, n, idxn, v, INSERT_VALUES);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    MatAssemblyBegin(auxMat, MAT_FINAL_ASSEMBLY);
+    MatAssemblyEnd(auxMat, MAT_FINAL_ASSEMBLY);
+  }
+
+  /* Add local Neumann matrix to PC */
+  PC pc;
+
+  assert(sd->ksp != NULL);
+  KSPGetPC(sd->ksp, &pc);
+  PCSetType(pc, PCHPDDM);
+  PCHPDDMSetAuxiliaryMat(pc, auxIS, auxMat, NULL, NULL);
+
+  /* Cleaning */
+  ISDestroy(&auxIS);
+  MatDestroy(&auxMat);
+
+  PetscLogStagePop();
+
+  cs_timer_t t1 = cs_timer_time();
+  cs_timer_counter_add_diff(&(c->t_setup), &t0, &t1);
+
+#else
+  bft_error(__FILE__, __LINE__, 0, _("HPDDM is not available inside PETSc.\n"));
+#endif
+}
+
 /*! (DOXYGEN_SHOULD_SKIP_THIS) \endcond */
 
 /*=============================================================================
@@ -494,8 +818,7 @@ _cs_ksp_converged(KSP                  ksp,
  *----------------------------------------------------------------------------*/
 
 void
-cs_user_sles_petsc_hook(void               *context,
-                        void               *ksp)
+cs_user_sles_petsc_hook(void *context, void *ksp)
 {
   CS_UNUSED(context);
   CS_UNUSED(ksp);
@@ -533,8 +856,8 @@ cs_sles_petsc_init(void)
  *
  * Note that this function returns a pointer directly to the iterative solver
  * management structure. This may be used to set further options.
- * If needed, \ref cs_sles_find may be used to obtain a pointer to the matching
- * \ref cs_sles_t container.
+ * If needed, \ref cs_sles_find may be used to obtain a pointer to the
+ * matching \ref cs_sles_t container.
  *
  * \param[in]      f_id          associated field id, or < 0
  * \param[in]      name          associated name if f_id < 0, or NULL
@@ -548,15 +871,13 @@ cs_sles_petsc_init(void)
 /*----------------------------------------------------------------------------*/
 
 cs_sles_petsc_t *
-cs_sles_petsc_define(int                          f_id,
-                     const char                  *name,
-                     const char                  *matrix_type,
-                     cs_sles_petsc_setup_hook_t  *setup_hook,
-                     void                        *context)
+cs_sles_petsc_define(int                         f_id,
+                     const char                 *name,
+                     const char                 *matrix_type,
+                     cs_sles_petsc_setup_hook_t *setup_hook,
+                     void                       *context)
 {
-  cs_sles_petsc_t * c = cs_sles_petsc_create(matrix_type,
-                                             setup_hook,
-                                             context);
+  cs_sles_petsc_t *c = cs_sles_petsc_create(matrix_type, setup_hook, context);
 
   cs_sles_t *sc = cs_sles_define(f_id,
                                  name,
@@ -569,8 +890,7 @@ cs_sles_petsc_define(int                          f_id,
                                  cs_sles_petsc_copy,
                                  cs_sles_petsc_destroy);
 
-  cs_sles_set_error_handler(sc,
-                            cs_sles_petsc_error_post_and_abort);
+  cs_sles_set_error_handler(sc, cs_sles_petsc_error_post_and_abort);
 
   return c;
 }
@@ -593,9 +913,9 @@ cs_sles_petsc_define(int                          f_id,
 /*----------------------------------------------------------------------------*/
 
 cs_sles_petsc_t *
-cs_sles_petsc_create(const char                  *matrix_type,
-                     cs_sles_petsc_setup_hook_t  *setup_hook,
-                     void                        *context)
+cs_sles_petsc_create(const char                 *matrix_type,
+                     cs_sles_petsc_setup_hook_t *setup_hook,
+                     void                       *context)
 
 {
   cs_sles_petsc_t *c;
@@ -613,6 +933,10 @@ cs_sles_petsc_create(const char                  *matrix_type,
     PetscInitializeNoArguments();
     cs_base_signal_restore();
   }
+
+  // Option for debug
+  // PetscOptionsSetValue(NULL, "-log_view", "");
+  // PetscOptionsSetValue(NULL, "-ksp_monitor_true_residual", "");
 
   if (_viewer == NULL) {
     PetscLogStageRegister("Linear system setup", _log_stage);
@@ -1065,8 +1389,14 @@ cs_sles_petsc_setup(void               *context,
                         sd,
                         NULL);
 
-  if (c->setup_hook != NULL)
+  if (c->setup_hook != NULL) {
+    cs_param_sles_t *slesp = (cs_param_sles_t *)c->hook_context;
+
+    if (slesp->precond == CS_PARAM_PRECOND_HPDDM && slesp->mat_is_sym) {
+      _cs_sles_hpddm_setup(context, name, a);
+    }
     c->setup_hook(c->hook_context, sd->ksp);
+  }
 
   /* KSPSetup could be called here for better separation of setup/solve
      logging, but calling it systematically seems to cause issues
@@ -1618,6 +1948,22 @@ cs_sles_petsc_library_info(cs_log_t  log_type)
                 PETSC_VERSION_MAJOR,
                 PETSC_VERSION_MINOR,
                 PETSC_VERSION_SUBMINOR);
+
+#if defined(PETSC_HAVE_SLEPC)
+  cs_log_printf(log_type,
+                "      SLEPc %d.%d.%d\n",
+                SLEPC_VERSION_MAJOR,
+                SLEPC_VERSION_MINOR,
+                SLEPC_VERSION_SUBMINOR);
+#else
+  cs_log_printf(log_type, "      SLEPc not available\n");
+#endif
+
+#if defined(PETSC_HAVE_HPDDM)
+  cs_log_printf(log_type, "      HPDDM %s\n", HPDDM_VERSION);
+#else
+  cs_log_printf(log_type, "      HPDDM not available\n");
+#endif
 }
 
 /*----------------------------------------------------------------------------*/

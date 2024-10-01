@@ -493,8 +493,8 @@ typedef struct {
    *
    * \var default_bc
    * Default boundary condition related to this equation. Valid choices:
-   * - \ref CS_PARAM_BC_HMG_NEUMANN
-   * - \ref CS_PARAM_BC_HMG_DIRICHLET
+   * - \ref CS_BC_SYMMETRY
+   * - \ref CS_BC_HMG_DIRICHLET
    *
    * \var n_bc_defs
    * Number of boundary conditions which are defined for this equation
@@ -2038,6 +2038,36 @@ cs_equation_add_bc_by_dof_func(cs_equation_param_t      *eqp,
                                cs_flag_t                 loc_flag,
                                cs_dof_func_t            *func,
                                void                     *input);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Add a new volume mass injection definition source term by
+ *        initializing a cs_xdef_t structure, using an array.
+ *
+ * \param[in, out] eqp          pointer to a cs_equation_param_t structure
+ * \param[in]      bc_type      type of boundary condition to add
+ * \param[in]      z_name       name of the related boundary zone
+ * \param[in]      loc          information to know where are located values
+ * \param[in]      array        pointer to an array
+ * \param[in]      is_owner     transfer the lifecycle to the cs_xdef_t struct.
+ *                              (true or false)
+ * \param[in]      full_length  if true, size of "array" should be allocated
+ *                              to the total numbers of entities related to the
+ *                              given location. If false, a new list is
+ *                              allocated and filled with the related subset
+ *                              indirection.
+ *
+ * \return a pointer to the new allocated \ref cs_xdef_t structure
+ */
+/*----------------------------------------------------------------------------*/
+
+cs_xdef_t *
+cs_equation_add_volume_mass_injection_by_array(cs_equation_param_t *eqp,
+                                               const char          *z_name,
+                                               cs_flag_t            loc_flag,
+                                               cs_real_t           *array,
+                                               bool                 is_owner,
+                                               bool                 full_length);
 
 /*----------------------------------------------------------------------------*/
 /*!

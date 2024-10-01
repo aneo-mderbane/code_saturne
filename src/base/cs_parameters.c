@@ -437,7 +437,7 @@ static cs_equation_param_t _equation_param_default
    .relaxv = 1.,
    .b_gradient_r = 2,
 
-   .default_bc = CS_PARAM_BC_HMG_NEUMANN,
+   .default_bc = CS_BC_SYMMETRY,
    .n_bc_defs = 0,
    .bc_defs = NULL,
 
@@ -579,18 +579,11 @@ cs_f_time_scheme_get_pointers(int     **ischtp,
                               int     **istmpf,
                               int     **isno2t,
                               int     **isto2t,
-                              double  **thetsn,
-                              double  **thetst,
-                              double  **thetvi,
-                              double  **thetcp,
                               int     **iccvfg,
-                              int     **initvi,
-                              int     **initro,
-                              int     **initcp);
+                              int     **initro);
 
 void
-cs_f_restart_auxiliary_get_pointers(int  **ileaux,
-                                    int  **iecaux);
+cs_f_restart_auxiliary_get_pointers(int  **ileaux);
 
 void
 cs_f_field_get_key_struct_var_cal_opt(int                  f_id,
@@ -814,28 +807,16 @@ cs_f_time_scheme_get_pointers(int     **ischtp,
                               int     **istmpf,
                               int     **isno2t,
                               int     **isto2t,
-                              double  **thetsn,
-                              double  **thetst,
-                              double  **thetvi,
-                              double  **thetcp,
                               int     **iccvfg,
-                              int     **initvi,
-                              int     **initro,
-                              int     **initcp)
+                              int     **initro)
 {
   *ischtp = &(_time_scheme.time_order);
   *istmpf = &(_time_scheme.istmpf);
   *isno2t = &(_time_scheme.isno2t);
   *isto2t = &(_time_scheme.isto2t);
-  *thetsn = &(_time_scheme.thetsn);
-  *thetst = &(_time_scheme.thetst);
-  *thetvi = &(_time_scheme.thetvi);
-  *thetcp = &(_time_scheme.thetcp);
   *iccvfg = &(_time_scheme.iccvfg);
 
-  *initvi = &_initvi;
   *initro = &_initro;
-  *initcp = &_initcp;
 }
 
 /*----------------------------------------------------------------------------
@@ -846,15 +827,12 @@ cs_f_time_scheme_get_pointers(int     **ischtp,
  *
  * parameters:
  *   ileaux  --> pointer to cs_glob_restart_auxiliary->read_auxiliary
- *   iecaux  --> pointer to cs_glob_restart_auxiliary->write_auxiliary
  *----------------------------------------------------------------------------*/
 
 void
-cs_f_restart_auxiliary_get_pointers(int  **ileaux,
-                                    int  **iecaux)
+cs_f_restart_auxiliary_get_pointers(int  **ileaux)
 {
   *ileaux = &(_restart_auxiliary.read_auxiliary);
-  *iecaux = &(_restart_auxiliary.write_auxiliary);
 }
 
 /*----------------------------------------------------------------------------
@@ -1420,6 +1398,9 @@ cs_parameters_create_added_variables(void)
     cs_field_set_key_int(f, cs_field_key_id("log"), 1);
     cs_field_set_key_int(f, cs_field_key_id("post_vis"), post_flag);
 
+    if (f->dim == 3)
+      cs_field_set_key_int(f, cs_field_key_id("coupled"), 1);
+
   }
 
   BFT_FREE(_user_variable_defs);
@@ -1504,13 +1485,13 @@ cs_parameters_define_auxiliary_fields(void)
     if (   th_model->thermal_variable == CS_THERMAL_MODEL_TEMPERATURE
         || th_model->thermal_variable == CS_THERMAL_MODEL_INTERNAL_ENERGY) {
 
-      cs_field_create("algo:gradient_pressure",
+      cs_field_create("algo:pressure_gradient",
                       0,
                       CS_MESH_LOCATION_CELLS,
                       3,
                       false);
 
-      cs_field_create("algo:gradient_pressure_increment",
+      cs_field_create("algo:pressure_increment_gradient",
                       0,
                       CS_MESH_LOCATION_CELLS,
                       3,
@@ -2079,7 +2060,6 @@ cs_parameters_eqp_complete(void)
   const int kvisl0 = cs_field_key_id("diffusivity_ref");
   const int kscacp  = cs_field_key_id("is_temperature");
 
-  const int kcdtvar = cs_field_key_id("time_step_factor");
   const int kcpsyr = cs_field_key_id("syrthes_coupling");
   const int kclvfl = cs_field_key_id("variance_clipping");
   const int kscmin = cs_field_key_id("min_scalar_clipping");
@@ -2379,54 +2359,6 @@ cs_parameters_eqp_complete(void)
   if (time_opt->dtmin <= -cs_math_big_r) time_opt->dtmin = 0.1*ts->dt_ref;
   if (time_opt->dtmax <= -cs_math_big_r) time_opt->dtmax = 1000.*ts->dt_ref;
 
-  /* Initialization of the time step factor for velocity, pressure and
-   * turbulent variables.
-   * FIXME time step factor is used ONLY for additional variables
-   * (user or model) */
-
-  if (cs_glob_param_cdo_mode != CS_PARAM_CDO_MODE_ONLY) {
-
-    cs_real_t cdtvar = cs_field_get_key_double(CS_F_(vel), kcdtvar);
-    cs_field_set_key_double(CS_F_(p), kcdtvar, cdtvar);
-    if (cs_glob_turb_model->itytur == 2) {
-      cdtvar = cs_field_get_key_double(CS_F_(k), kcdtvar);
-      cs_field_set_key_double(CS_F_(eps), kcdtvar, cdtvar);
-    }
-    else if (cs_glob_turb_model->itytur == 3) {
-      cdtvar = cs_field_get_key_double(CS_F_(rij), kcdtvar);
-      cs_field_set_key_double(CS_F_(eps), kcdtvar, cdtvar);
-
-      /* cdtvar for alp_bl is useless because there is no time dependency
-         in the equation of alpha. */
-      if (cs_glob_turb_model->iturb == CS_TURB_RIJ_EPSILON_EBRSM) {
-        cdtvar = cs_field_get_key_double(CS_F_(rij), kcdtvar);
-        cs_field_set_key_double(CS_F_(alp_bl), kcdtvar, cdtvar);
-      }
-    }
-    else if (cs_glob_turb_model->itytur == 5) {
-      cdtvar = cs_field_get_key_double(CS_F_(k), kcdtvar);
-      cs_field_set_key_double(CS_F_(eps), kcdtvar, cdtvar);
-      cs_field_set_key_double(CS_F_(phi), kcdtvar, cdtvar);
-
-      /* CDTVAR for f_bar/alp_bl is in fact useless
-       * as the time step is in the equation of f_bar/alpha */
-      if (cs_glob_turb_model->iturb == CS_TURB_V2F_PHI) {
-        cs_field_set_key_double(CS_F_(f_bar), kcdtvar, cdtvar);
-      }
-      else if (cs_glob_turb_model->iturb == CS_TURB_V2F_BL_V2K) {
-        cs_field_set_key_double(CS_F_(alp_bl), kcdtvar, cdtvar);
-      }
-    }
-    else if (cs_glob_turb_model->iturb == CS_TURB_K_OMEGA) {
-      cdtvar = cs_field_get_key_double(CS_F_(k), kcdtvar);
-      cs_field_set_key_double(CS_F_(omg), kcdtvar, cdtvar);
-    }
-    else if (cs_glob_turb_model->iturb == CS_TURB_SPALART_ALLMARAS) {
-      /* cdtvar is equal to 1. by default in cs_parameters.c */
-    }
-
-  }
-
   /* For laminar cases or when using low Reynolds model: no wall function.
    * When using mixing length, Spalart-Allmaras or LES: one scale log law.
    * When using EB-RSM : all y+ wall functions
@@ -2506,12 +2438,7 @@ cs_parameters_eqp_complete(void)
    * The consistency tests will be done in verini. */
 
   /* Count the number of scalars nscal */
-  int nscal = 0;
-  for (int f_id = 0; f_id < n_fields; f_id ++) {
-    cs_field_t *f_sca = cs_field_by_id(f_id);
-    int isca = cs_field_get_key_int(f_sca, ks);
-    if (isca > 0) nscal++;
-  }
+  int nscal = cs_field_n_scalar_fields();
 
   if (nscal > 0) {
 

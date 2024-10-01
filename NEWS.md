@@ -3,6 +3,9 @@ Master (not on release branches yet)
 
 ### Users changes:
 
+- Rename all cs_user_XXX.c functions to cs_user_XXX.cpp thus allowing calls
+  to C++ functions within these functions.
+
 - Add a runtime option for `run` and `submit` commands to check for memory leaks.
   User can now run `code_saturne run --mem-log` which will position the
   environment variable `CS_MEM_LOG=cs_mem.log` automatically, and will
@@ -15,6 +18,11 @@ Master (not on release branches yet)
   the SLURM resource manager on cluster. Expected times can now be set in the
   run.cfg file of a given case. Specific resources can also be specified in the
   run.cfg file using the run_id `[<resource>/run_id=<run_id>]`.
+
+### Architectural changes:
+
+- Modify the python layer (CLI and GUI) installation process to now use
+  setup.py instead of Makefile scripts.
 
 Release 8.2.0 (2024-06-17)
 --------------------------

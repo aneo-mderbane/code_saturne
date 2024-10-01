@@ -145,9 +145,9 @@ _sym_matrix_scalar(const cs_mesh_t            *m,
   const cs_lnum_t n_i_faces = m->n_i_faces;
 
   const cs_lnum_2_t *restrict i_face_cells
-    = (const cs_lnum_2_t *restrict)m->i_face_cells;
+    = (const cs_lnum_2_t *)m->i_face_cells;
   const cs_lnum_t *restrict b_face_cells
-    = (const cs_lnum_t *restrict)m->b_face_cells;
+    = (const cs_lnum_t *)m->b_face_cells;
 
   cs_dispatch_context ctx;
   cs_dispatch_sum_type_t i_sum_type = ctx.get_parallel_for_i_faces_sum_type(m);
@@ -270,9 +270,9 @@ _matrix_scalar(const cs_mesh_t            *m,
 
   const cs_lnum_t n_cells = m->n_cells;
   const cs_lnum_2_t *restrict i_face_cells
-    = (const cs_lnum_2_t *restrict)m->i_face_cells;
+    = (const cs_lnum_2_t *)m->i_face_cells;
   const cs_lnum_t *restrict b_face_cells
-    = (const cs_lnum_t *restrict)m->b_face_cells;
+    = (const cs_lnum_t *)m->b_face_cells;
 
   cs_dispatch_context ctx;
   cs_dispatch_sum_type_t i_sum_type = ctx.get_parallel_for_i_faces_sum_type(m);
@@ -404,9 +404,9 @@ _sym_matrix_strided(const cs_mesh_t            *m,
   const b_t *cofbfp = (const b_t *)bc_coeffs_v->bf;
   const cs_lnum_t n_cells = m->n_cells;
   const cs_lnum_2_t *restrict i_face_cells
-    = (const cs_lnum_2_t *restrict)m->i_face_cells;
+    = (const cs_lnum_2_t *)m->i_face_cells;
   const cs_lnum_t *restrict b_face_cells
-    = (const cs_lnum_t *restrict)m->b_face_cells;
+    = (const cs_lnum_t *)m->b_face_cells;
 
   cs_dispatch_context ctx;
   cs_dispatch_sum_type_t i_sum_type = ctx.get_parallel_for_i_faces_sum_type(m);
@@ -521,9 +521,11 @@ _matrix_strided(const cs_mesh_t            *m,
 {
   const cs_lnum_t n_cells = m->n_cells;
   const cs_lnum_2_t *restrict i_face_cells
-    = (const cs_lnum_2_t *restrict)m->i_face_cells;
+    = (const cs_lnum_2_t *)m->i_face_cells;
   const cs_lnum_t *restrict b_face_cells
-    = (const cs_lnum_t *restrict)m->b_face_cells;
+    = (const cs_lnum_t *)m->b_face_cells;
+  const cs_real_3_t *i_face_u_normal
+    = (const cs_real_3_t *)mq->i_face_u_normal;
   const cs_real_3_t *b_face_u_normal
     = (const cs_real_3_t *)mq->b_face_u_normal;
   cs_real_2_t *i_f_face_factor;
@@ -612,7 +614,7 @@ _matrix_strided(const cs_mesh_t            *m,
   else {
     ctx.parallel_for_i_faces(m, [=] CS_F_HOST_DEVICE (cs_lnum_t  f_id) {
       const cs_lnum_t _p = is_p*f_id;
-      const cs_real_t *n = b_face_u_normal[f_id];
+      const cs_real_t *n = i_face_u_normal[f_id];
       const cs_real_t _i_massflux = i_massflux[f_id];
       cs_lnum_t ii = i_face_cells[f_id][0];
       cs_lnum_t jj = i_face_cells[f_id][1];
@@ -666,6 +668,7 @@ _matrix_strided(const cs_mesh_t            *m,
           vfaci[stride*i+j] = - diag -_xa[f_id][1][i][j];
 
           vfacj[stride*i+j] =   diag -_xa[f_id][0][i][j];
+
         }
       }
 
@@ -828,9 +831,9 @@ _sym_matrix_anisotropic_diffusion_strided
 
   const cs_lnum_t n_cells = m->n_cells;
   const cs_lnum_2_t *restrict i_face_cells
-    = (const cs_lnum_2_t *restrict)m->i_face_cells;
+    = (const cs_lnum_2_t *)m->i_face_cells;
   const cs_lnum_t *restrict b_face_cells
-    = (const cs_lnum_t *restrict)m->b_face_cells;
+    = (const cs_lnum_t *)m->b_face_cells;
 
   cs_dispatch_context ctx;
   cs_dispatch_sum_type_t i_sum_type = ctx.get_parallel_for_i_faces_sum_type(m);
@@ -930,25 +933,30 @@ _sym_matrix_anisotropic_diffusion_strided
 
 template <cs_lnum_t stride>
 static void
-_matrix_anisotropic_diffusion_strided(const cs_mesh_t            *m,
-                                      const cs_mesh_quantities_t *mq,
-                                      int                         iconvp,
-                                      int                         idiffp,
-                                      double                      thetap,
-                                      const cs_field_bc_coeffs_t *bc_coeffs_v,
-                                      const cs_real_t             fimp[][stride][stride],
-                                      const cs_real_t             i_massflux[],
-                                      const cs_real_t             b_massflux[],
-                                      const cs_real_t             i_visc[][stride][stride],
-                                      const cs_real_t             b_visc[],
-                                      cs_real_t        (*restrict da)[stride][stride],
-                                      cs_real_t        (*restrict xa)[2][stride][stride])
+_matrix_anisotropic_diffusion_strided
+(
+ const cs_mesh_t            *m,
+ const cs_mesh_quantities_t *mq,
+ int                         iconvp,
+ int                         idiffp,
+ double                      thetap,
+ const cs_field_bc_coeffs_t *bc_coeffs_v,
+ const cs_real_t             fimp[][stride][stride],
+ const cs_real_t             i_massflux[],
+ const cs_real_t             b_massflux[],
+ const cs_real_t             i_visc[][stride][stride],
+ const cs_real_t             b_visc[],
+ cs_real_t        (*restrict da)[stride][stride],
+ cs_real_t        (*restrict xa)[2][stride][stride]
+)
 {
   const cs_lnum_t n_cells = m->n_cells;
   const cs_lnum_2_t *restrict i_face_cells
-    = (const cs_lnum_2_t *restrict)m->i_face_cells;
+    = (const cs_lnum_2_t *)m->i_face_cells;
   const cs_lnum_t *restrict b_face_cells
-    = (const cs_lnum_t *restrict)m->b_face_cells;
+    = (const cs_lnum_t *)m->b_face_cells;
+  const cs_real_3_t *i_face_u_normal
+    = (const cs_real_3_t *)mq->i_face_u_normal;
   const cs_real_3_t *b_face_u_normal
     = (const cs_real_3_t *)mq->b_face_u_normal;
 
@@ -989,7 +997,7 @@ _matrix_anisotropic_diffusion_strided(const cs_mesh_t            *m,
 
   ctx.parallel_for_i_faces(m, [=] CS_F_HOST_DEVICE (cs_lnum_t f_id) {
     const cs_lnum_t _p = is_p*f_id;
-    const cs_real_t *n = b_face_u_normal[f_id];
+    const cs_real_t *n = i_face_u_normal[f_id];
     cs_lnum_t ii = i_face_cells[f_id][0];
     cs_lnum_t jj = i_face_cells[f_id][1];
 
@@ -1254,6 +1262,7 @@ cs_matrix_wrapper_scalar(int                         iconvp,
       da[c_id] += (cs_real_t)c_disable_flag[c_id];
     });
   }
+  ctx.wait();
 
 }
 
@@ -1395,6 +1404,7 @@ cs_matrix_wrapper_vector(int                         iconvp,
         da[c_id][i][i] += (cs_real_t)c_disable_flag[c_id];
     });
   }
+  ctx.wait();
 
 }
 
@@ -1518,6 +1528,7 @@ cs_matrix_wrapper_tensor(int                         iconvp,
         da[c_id][i][i] += (cs_real_t)c_disable_flag[c_id];
     });
   }
+  ctx.wait();
 
 }
 
@@ -1571,9 +1582,9 @@ cs_matrix_time_step(const cs_mesh_t            *m,
   const cs_lnum_t *restrict b_group_index = m->b_face_numbering->group_index;
 
   const cs_lnum_2_t *restrict i_face_cells
-    = (const cs_lnum_2_t *restrict)m->i_face_cells;
+    = (const cs_lnum_2_t *)m->i_face_cells;
   const cs_lnum_t *restrict b_face_cells
-    = (const cs_lnum_t *restrict)m->b_face_cells;
+    = (const cs_lnum_t *)m->b_face_cells;
 
   /* 1. Initialization */
 

@@ -211,15 +211,15 @@ static int ipdirtens3[3][3][3];
 static int nscal = 0;
 
 /* Global static structure _les_balance */
-static cs_les_balance_t  _les_balance = {.brij = NULL,
-                                         .btui = NULL,
+static cs_les_balance_t  _les_balance = {.brij = nullptr,
+                                         .btui = nullptr,
                                          .i_les_balance = 0,
                                          .type = 0,
                                          .frequency_n = -1};
 
-static cs_field_t *_gradv   = NULL;
-static cs_field_t *_gradnut = NULL;
-static cs_field_t **_gradt  = NULL;
+static cs_field_t *_gradv   = nullptr;
+static cs_field_t *_gradnut = nullptr;
+static cs_field_t **_gradt  = nullptr;
 
 /*! (DOXYGEN_SHOULD_SKIP_THIS) \endcond */
 
@@ -242,22 +242,17 @@ cs_les_balance_t  *cs_glob_les_balance = &_les_balance;
  * parameters:
  *   name <--  time moment name
  *
- * returns  pointer to a field or NULL.
+ * returns  pointer to a field or nullptr.
  *----------------------------------------------------------------------------*/
 
 static cs_field_t *
 _les_balance_get_tm_by_name(const char *name)
 {
-  int n_moments = cs_time_moment_n_moments();
-  cs_field_t *f = NULL;
+  cs_field_t *f = cs_field_by_name_try(name);
+  if (! (f->type & CS_FIELD_ACCUMULATOR))
+    f = nullptr;
 
-  for (int imom = 0; imom < n_moments; imom++) {
-    f = cs_time_moment_get_field(imom);
-    if (strcmp(f->name, name) == 0)
-      return f;
-  }
-
-  return NULL;
+  return f;
 }
 
 /*----------------------------------------------------------------------------*
@@ -295,14 +290,14 @@ _les_balance_get_tm_label(int         isca,
  *   scalar_id <-- scalar id
  *   name      <-- time moment name
  *
- * returns  pointer to a field or NULL.
+ * returns  pointer to a field or nullptr.
  *----------------------------------------------------------------------------*/
 
 static cs_field_t *
 _les_balance_get_tm_by_scalar_id(int scalar_id,
                                  const char *name)
 {
-  cs_field_t *f = NULL;
+  cs_field_t *f = nullptr;
   char *buffer;
 
   BFT_MALLOC(buffer, 32, char);
@@ -421,7 +416,7 @@ _les_balance_laplacian(cs_real_t   *wa,
                                  1,              /* inc */
                                  1,              /* imasac (not used) */
                                  wa,             /* pvar */
-                                 NULL,           /* pvara (not used) */
+                                 nullptr,           /* pvara (not used) */
                                  0,              /* icvfli (not used) */
                                  &bc_coeffs_loc, /* coefa & b not used */
                                  i_visc,         /* mass flux (not used) */
@@ -511,8 +506,8 @@ _les_balance_laplacian(cs_real_t   *wa,
                eqp->verbosity,
                eqp->epsrgr,
                eqp->climgr,
-               NULL,
-               NULL,
+               nullptr,
+               nullptr,
                (const cs_real_3_t *)wa,
                &bc_coeffs_v_loc,
                i_massflux,
@@ -591,11 +586,11 @@ _les_balance_compute_gradients(void)
                        static_cast<cs_gradient_limit_t>(eqp->imligr),
                        eqp->epsrgr,
                        eqp->climgr,
-                       NULL,
+                       nullptr,
                        &bc_coeffs_loc,
                        CS_F_(mu_t)->val,
-                       NULL,
-                       NULL,
+                       nullptr,
+                       nullptr,
                        (cs_real_3_t *)_gradnut->val);
 
     BFT_FREE(coefas);
@@ -648,11 +643,12 @@ _les_balance_compute_pdjuisym(const void   *input,
 
   cs_real_33_t *grdv = (cs_real_33_t *)_gradv->val;
 
+# pragma omp parallel for if (n_cells > CS_THR_MIN)
   for (cs_lnum_t iel = 0; iel < n_cells; iel++) {
     cs_real_t pre = CS_F_(p)->val[iel];
     for (cs_lnum_t ii = 0; ii < 6; ii++) {
-      int i = idirtens[ii][0];
-      int j = idirtens[ii][1];
+      cs_lnum_t i = idirtens[ii][0];
+      cs_lnum_t j = idirtens[ii][1];
       vals[6*iel + ii] = pre*(grdv[iel][i][j] + grdv[iel][j][i]);
     }
   }
@@ -677,6 +673,7 @@ _les_balance_compute_smag(const void   *input,
 
   cs_real_t *cpro_smago = cs_field_by_name("smagorinsky_constant^2")->val;
 
+# pragma omp parallel for if (n_cells > CS_THR_MIN)
   for (cs_lnum_t iel = 0; iel < n_cells; iel++)
     vals[iel] = cs_math_sq(cpro_smago[iel]);
 }
@@ -699,6 +696,7 @@ _les_balance_compute_dkuidkuj(const void   *input,
 
   cs_real_33_t *grdv = (cs_real_33_t *)_gradv->val;
 
+# pragma omp parallel for if (n_cells > CS_THR_MIN)
   for (cs_lnum_t iel = 0; iel < n_cells; iel++) {
 
     for (cs_lnum_t ii = 0; ii < 6; ii++)
@@ -744,13 +742,16 @@ _les_balance_compute_uidktaujk(const void   *input,
 
     for (cs_lnum_t j = 0; j < 3; j++) {
 
-      for (cs_lnum_t iel = 0; iel < n_cells; iel++)
+#     pragma omp parallel for if (n_cells > CS_THR_MIN)
+      for (cs_lnum_t iel = 0; iel < n_cells; iel++) {
         for (cs_lnum_t k = 0; k < 3; k++)
           vel[iel][k] = -CS_F_(mu_t)->val[iel]*( grdv[iel][j][k]
                                                 +grdv[iel][k][j]);
+      }
 
       _les_balance_divergence_vector(vel, diverg);
 
+#     pragma omp parallel for if (n_cells > CS_THR_MIN)
       for (cs_lnum_t iel = 0; iel < n_cells; iel++)
         vals[9*iel+i*3+j] = velocity[iel][i]*diverg[iel];
     }
@@ -778,6 +779,7 @@ _les_balance_compute_nutdkuidkuj(const void   *input,
 
   cs_real_33_t *grdv = (cs_real_33_t *)_gradv->val;
 
+# pragma omp parallel for if (n_cells > CS_THR_MIN)
   for (cs_lnum_t iel = 0; iel < n_cells; iel++) {
 
     for (cs_lnum_t ii = 0; ii < 6; ii++)
@@ -806,7 +808,6 @@ _les_balance_compute_dknutuidjuksym(const void   *input,
                                     cs_real_t    *vals)
 {
   const cs_lnum_t n_cells = cs_glob_mesh->n_cells;
-  int i, j;
 
   CS_UNUSED(input);
 
@@ -816,14 +817,15 @@ _les_balance_compute_dknutuidjuksym(const void   *input,
   cs_real_33_t *grdv  = (cs_real_33_t *)_gradv->val;
   cs_real_3_t *grdnu = (cs_real_3_t *)_gradnut->val;
 
+# pragma omp parallel for if (n_cells > CS_THR_MIN)
   for (cs_lnum_t iel = 0; iel < n_cells; iel++) {
 
     for (cs_lnum_t ii = 0; ii < 6; ii++)
       vals[6*iel + ii] = 0.;
 
     for (cs_lnum_t ii = 0; ii < 6; ii++) {
-      i = idirtens[ii][0];
-      j = idirtens[ii][1];
+      cs_lnum_t i = idirtens[ii][0];
+      cs_lnum_t j = idirtens[ii][1];
       for (cs_lnum_t k = 0; k < 3; k++)
         vals[6*iel + ii] += grdnu[iel][i]
                             *( vel[iel][i]*grdv[iel][k][j]
@@ -846,17 +848,18 @@ _les_balance_compute_nutdkuiuj(const void   *input,
 {
   const int *k = (const int *)input;
   const cs_lnum_t n_cells = cs_glob_mesh->n_cells;
-  int i,j;
 
   cs_real_3_t *vel   = (cs_real_3_t *)CS_F_(vel)->val;
+  cs_real_t   *mu_t  = CS_F_(mu_t)->val;
   cs_real_6_t *tens  = (cs_real_6_t *)vals;
   cs_real_33_t *grdv = (cs_real_33_t *)_gradv->val;
 
+# pragma omp parallel for if (n_cells > CS_THR_MIN)
   for (cs_lnum_t iel = 0; iel < n_cells; iel++) {
     for (cs_lnum_t ii = 0; ii < 6; ii++) {
-      i = idirtens[ii][0];
-      j = idirtens[ii][1];
-      tens[iel][ii] = CS_F_(mu_t)->val[iel]
+      cs_lnum_t i = idirtens[ii][0];
+      cs_lnum_t j = idirtens[ii][1];
+      tens[iel][ii] = mu_t[iel]
                       *( vel[iel][i]*grdv[iel][j][*k]
                         +vel[iel][j]*grdv[iel][i][*k]);
     }
@@ -882,6 +885,7 @@ _les_balance_compute_dknutdiuk(const void   *input,
   cs_real_33_t *grdv = (cs_real_33_t *)_gradv->val;
   cs_real_3_t *grdnu = (cs_real_3_t *)_gradnut->val;
 
+# pragma omp parallel for if (n_cells > CS_THR_MIN)
   for (cs_lnum_t iel = 0; iel < n_cells; iel++) {
 
     for (cs_lnum_t i = 0; i < 3; i++)
@@ -913,10 +917,12 @@ _les_balance_compute_uidjnut(const void   *input,
   cs_real_3_t *vel   = (cs_real_3_t *)CS_F_(vel)->val;
   cs_real_33_t *tens = (cs_real_33_t *)vals;
 
+# pragma omp parallel for if (n_cells > CS_THR_MIN)
   for (cs_lnum_t iel = 0; iel < n_cells; iel++) {
-    for (cs_lnum_t i = 0; i < 3; i++)
+    for (cs_lnum_t i = 0; i < 3; i++) {
       for (cs_lnum_t j = 0; j < 3; j++)
         tens[iel][i][j] = vel[iel][i]*grdnu[iel][j];
+    }
   }
 }
 
@@ -933,26 +939,19 @@ _les_balance_compute_djtdjui(const void   *input,
                              cs_real_t    *vals)
 {
   const cs_field_t *sca = (const cs_field_t *)input;
-  const int keysca = cs_field_key_id("scalar_id");
   const cs_lnum_t n_cells = cs_glob_mesh->n_cells;
-  cs_real_t dtdxjduidxj;
-  int isca = 0;
 
-  for (int f_id = 0; f_id < cs_field_n_fields(); f_id++) {
-    cs_field_t *f = cs_field_by_id(f_id);
-    if (cs_field_get_key_int(f, keysca) > 0) {
-      if (f_id == sca->id)
-        break;
-      isca++;
-    }
-  }
+  const int keysca = cs_field_key_id("scalar_id");
+  int isca = cs_field_get_key_int(sca, keysca) - 1;
+  assert(isca > -1);
 
   cs_real_33_t *grdv = (cs_real_33_t *)_gradv->val;
   cs_real_3_t *grdt = (cs_real_3_t *)_gradt[isca]->val;
 
+# pragma omp parallel for if (n_cells > CS_THR_MIN)
   for (cs_lnum_t iel = 0; iel < n_cells; iel++) {
     for (cs_lnum_t i = 0; i < 3; i++) {
-      dtdxjduidxj = 0.;
+      cs_real_t dtdxjduidxj = 0.;
       for (cs_lnum_t kk = 0; kk < 3; kk++)
         dtdxjduidxj += grdt[iel][kk]*grdv[iel][i][kk];
 
@@ -976,12 +975,12 @@ _les_balance_compute_tuiuj(const void   *input,
   const cs_field_t *sca = (const cs_field_t *)input;
   const cs_lnum_t n_cells = cs_glob_mesh->n_cells;
   cs_real_3_t *vel = (cs_real_3_t *)CS_F_(vel)->val;
-  int i, j;
 
+# pragma omp parallel for if (n_cells > CS_THR_MIN)
   for (cs_lnum_t iel = 0; iel < n_cells; iel++) {
     for (cs_lnum_t ii = 0; ii < 6; ii++) {
-      i = idirtens[ii][0];
-      j = idirtens[ii][1];
+      cs_lnum_t i = idirtens[ii][0];
+      cs_lnum_t j = idirtens[ii][1];
       vals[6*iel+ii] = sca->val[iel]*vel[iel][i]*vel[iel][j];
     }
   }
@@ -1005,16 +1004,8 @@ _les_balance_compute_uidjt(const void   *input,
   cs_real_33_t *tens = (cs_real_33_t *)vals;
 
   const int keysca = cs_field_key_id("scalar_id");
-  int isca = 0;
-
-  for (int f_id = 0; f_id < cs_field_n_fields(); f_id++) {
-    cs_field_t *f = cs_field_by_id(f_id);
-    if (cs_field_get_key_int(f, keysca) > 0) {
-      if (f_id == sca->id)
-        break;
-      isca++;
-    }
-  }
+  int isca = cs_field_get_key_int(sca, keysca) - 1;
+  assert(isca > -1);
 
   cs_real_3_t *grdt = (cs_real_3_t *)_gradt[isca]->val;
 
@@ -1038,23 +1029,16 @@ _les_balance_compute_ditdit(const void   *input,
 {
   const cs_field_t *sca = (const cs_field_t *)input;
   const cs_lnum_t n_cells = cs_glob_mesh->n_cells;
-  const int keysca = cs_field_key_id("scalar_id");
-  cs_real_t dtdxidtdxi;
-  int isca = 0;
 
-  for (int f_id = 0; f_id < cs_field_n_fields(); f_id++) {
-    cs_field_t *f = cs_field_by_id(f_id);
-    if (cs_field_get_key_int(f, keysca) > 0) {
-      if (f_id == sca->id)
-        break;
-      isca++;
-    }
-  }
+  const int keysca = cs_field_key_id("scalar_id");
+  int isca = cs_field_get_key_int(sca, keysca) - 1;
+  assert(isca > -1);
 
   cs_real_3_t *grdt = (cs_real_3_t *)_gradt[isca]->val;
 
+# pragma omp parallel for if (n_cells > CS_THR_MIN)
   for (cs_lnum_t iel = 0; iel < n_cells; iel++) {
-    dtdxidtdxi = 0.;
+    cs_real_t dtdxidtdxi = 0.;
     for (cs_lnum_t i = 0; i < 3; i++)
       dtdxidtdxi += grdt[iel][i]; // FIXME: missing SQUARE??
     vals[iel] = dtdxidtdxi;
@@ -1095,13 +1079,16 @@ _les_balance_compute_tdjtauij(const void   *input,
   cs_real_33_t *grdv = (cs_real_33_t *)_gradv->val;
 
   for (cs_lnum_t i = 0; i < 3; i++) {
-    for (cs_lnum_t iel = 0; iel < n_cells; iel++)
+#   pragma omp parallel for if (n_cells > CS_THR_MIN)
+    for (cs_lnum_t iel = 0; iel < n_cells; iel++) {
       for (cs_lnum_t k = 0; k < 3; k++)
         w1[iel][k] = -CS_F_(mu_t)->val[iel]*( grdv[iel][i][k]
                                              +grdv[iel][k][i]);
+    }
 
     _les_balance_divergence_vector(w1, diverg);
 
+#   pragma omp parallel for if (n_cells > CS_THR_MIN)
     for (cs_lnum_t iel = 0; iel < n_cells; iel++)
       vals[3*iel+i] = sca->val[iel]*diverg[iel];
   }
@@ -1148,13 +1135,16 @@ _les_balance_compute_uidivturflux(const void   *input,
   cs_real_33_t *grdv = (cs_real_33_t *)_gradv->val;
 
   for (cs_lnum_t i = 0; i < 3; i++) {
-    for (cs_lnum_t iel = 0; iel < n_cells; iel++)
+#   pragma omp parallel for if (n_cells > CS_THR_MIN)
+    for (cs_lnum_t iel = 0; iel < n_cells; iel++) {
       for (cs_lnum_t k = 0; k < 3; k++)
         w1[iel][k] =  cs_math_sq(CS_F_(mu_t)->val[iel])/sigmas
                      *(grdv[iel][i][k]+grdv[iel][k][i]);
+    }
 
     _les_balance_divergence_vector(w1, diverg);
 
+#   pragma omp parallel for if (n_cells > CS_THR_MIN)
     for (cs_lnum_t iel = 0; iel < n_cells; iel++)
       vals[3*iel+i] = vel[iel][i]*diverg[iel];
   }
@@ -1200,14 +1190,18 @@ _les_balance_compute_tdivturflux(const void   *input,
   cs_real_33_t *grdv = (cs_real_33_t *)_gradv->val;
 
   /* TODO : bug dans le fortran, boucle sur ii ? */
-  for (cs_lnum_t i = 0; i < 3; i++)
-    for (cs_lnum_t iel = 0; iel < n_cells; iel++)
+  for (cs_lnum_t i = 0; i < 3; i++) {
+#   pragma omp parallel for if (n_cells > CS_THR_MIN)
+    for (cs_lnum_t iel = 0; iel < n_cells; iel++) {
       for (cs_lnum_t k = 0; k < 3; k++)
         w1[iel][k] =  cs_math_sq(CS_F_(mu_t)->val[iel])/sigmas
                      *(grdv[iel][i][k]+grdv[iel][k][i]);
+    }
+  }
 
   _les_balance_divergence_vector(w1, diverg);
 
+# pragma omp parallel for if (n_cells > CS_THR_MIN)
   for (cs_lnum_t iel = 0; iel < n_cells; iel++)
     vals[iel] = sca->val[iel]*diverg[iel];
 
@@ -1229,23 +1223,16 @@ _les_balance_compute_nutditdit(const void   *input,
 {
   const cs_field_t *sca = (const cs_field_t *)input;
   const cs_lnum_t n_cells = cs_glob_mesh->n_cells;
-  const int keysca = cs_field_key_id("scalar_id");
-  cs_real_t nutditdit;
-  int isca = 0;
 
-  for (int f_id = 0; f_id < cs_field_n_fields(); f_id++) {
-    cs_field_t *f = cs_field_by_id(f_id);
-    if (cs_field_get_key_int(f, keysca) > 0) {
-      if (f_id == sca->id)
-        break;
-      isca++;
-    }
-  }
+  const int keysca = cs_field_key_id("scalar_id");
+  int isca = cs_field_get_key_int(sca, keysca) - 1;
+  assert(isca > -1);
 
   cs_real_3_t *grdt = (cs_real_3_t *)_gradt[isca]->val;
 
+# pragma omp parallel for if (n_cells > CS_THR_MIN)
   for (cs_lnum_t iel = 0; iel < n_cells; iel++) {
-    nutditdit = 0.;
+    cs_real_t nutditdit = 0.;
     for (cs_lnum_t i = 0; i < 3; i++)
       nutditdit +=  CS_F_(mu_t)->val[iel]*sca->val[iel]
                        *cs_math_sq(grdt[iel][i]);
@@ -1272,23 +1259,17 @@ _les_balance_compute_nutuidjt(const void   *input,
   cs_real_33_t *tens = (cs_real_33_t *)vals;
 
   const int keysca = cs_field_key_id("scalar_id");
-  int isca = 0;
-
-  for (int f_id = 0; f_id < cs_field_n_fields(); f_id++) {
-    cs_field_t *f = cs_field_by_id(f_id);
-    if (cs_field_get_key_int(f, keysca) > 0) {
-      if (f_id == sca->id)
-        break;
-      isca++;
-    }
-  }
+  int isca = cs_field_get_key_int(sca, keysca) - 1;
+  assert(isca > -1);
 
   cs_real_3_t *grdt = (cs_real_3_t *)_gradt[isca]->val;
 
-  for (cs_lnum_t iel = 0; iel < n_cells; iel++)
+# pragma omp parallel for if (n_cells > CS_THR_MIN)
+  for (cs_lnum_t iel = 0; iel < n_cells; iel++) {
     for (cs_lnum_t i = 0; i < 3; i++)
       for (cs_lnum_t j = 0; j < 3; j++)
         tens[iel][i][j] = CS_F_(mu_t)->val[iel]*vel[iel][i]*grdt[iel][j];
+  }
 }
 
 /*----------------------------------------------------------------------------
@@ -1305,25 +1286,18 @@ _les_balance_compute_nutdjuidjt(const void   *input,
 {
   const cs_field_t *sca = (const cs_field_t *)input;
   const cs_lnum_t n_cells = cs_glob_mesh->n_cells;
-  const int keysca = cs_field_key_id("scalar_id");
-  cs_real_t nutdjuidjt;
-  int isca = 0;
 
-  for (int f_id = 0; f_id < cs_field_n_fields(); f_id++) {
-    cs_field_t *f = cs_field_by_id(f_id);
-    if (cs_field_get_key_int(f, keysca) > 0) {
-      if (f_id == sca->id)
-        break;
-      isca++;
-    }
-  }
+  const int keysca = cs_field_key_id("scalar_id");
+  int isca = cs_field_get_key_int(sca, keysca) - 1;
+  assert(isca > -1);
 
   cs_real_33_t *grdv = (cs_real_33_t *)_gradv->val;
   cs_real_3_t *grdt = (cs_real_3_t *)_gradt[isca]->val;
 
+# pragma omp parallel for if (n_cells > CS_THR_MIN)
   for (cs_lnum_t iel = 0; iel < n_cells; iel++) {
     for (cs_lnum_t i = 0; i < 3; i++) {
-      nutdjuidjt = 0.;
+      cs_real_t nutdjuidjt = 0.;
       for (cs_lnum_t kk = 0; kk < 3; kk++)
         nutdjuidjt += CS_F_(mu_t)->val[iel]*grdv[iel][i][kk]*grdt[iel][kk];
 
@@ -1347,14 +1321,14 @@ _les_balance_compute_djnutdiuj(const void   *input,
   CS_UNUSED(input);
 
   const cs_lnum_t n_cells = cs_glob_mesh->n_cells;
-  cs_real_t djnutdiuj;
 
   cs_real_33_t *grdv = (cs_real_33_t *)_gradv->val;
   cs_real_3_t *grdnu = (cs_real_3_t *)_gradnut->val;
 
+# pragma omp parallel for if (n_cells > CS_THR_MIN)
   for (cs_lnum_t iel = 0; iel < n_cells; iel++) {
     for (cs_lnum_t i = 0; i < 3; i++) {
-      djnutdiuj = 0.;
+      cs_real_t djnutdiuj = 0.;
       for (cs_lnum_t kk = 0; kk < 3; kk++)
         djnutdiuj += grdnu[iel][kk]*grdv[iel][kk][i];
 
@@ -1377,14 +1351,14 @@ _les_balance_compute_djnuttdiuj(const void   *input,
 {
   const cs_field_t *sca = (const cs_field_t *)input;
   const cs_lnum_t n_cells = cs_glob_mesh->n_cells;
-  cs_real_t djnuttdiuj;
 
   cs_real_33_t *grdv = (cs_real_33_t *)_gradv->val;
   cs_real_3_t *grdnu = (cs_real_3_t *)_gradnut->val;
 
+# pragma omp parallel for if (n_cells > CS_THR_MIN)
   for (cs_lnum_t iel = 0; iel < n_cells; iel++) {
     for (cs_lnum_t i = 0; i < 3; i++) {
-      djnuttdiuj = 0.;
+      cs_real_t djnuttdiuj = 0.;
       for (cs_lnum_t kk = 0; kk < 3; kk++)
         djnuttdiuj += grdnu[iel][kk]*sca->val[iel]*grdv[iel][kk][i];
 
@@ -1415,7 +1389,7 @@ _les_balance_time_moment(void)
                                        1,    /* nt_start */
                                        -1,   /* t_start */
                                        CS_TIME_MOMENT_RESTART_AUTO,
-                                       NULL);
+                                       nullptr);
   }
 
   {
@@ -1431,7 +1405,7 @@ _les_balance_time_moment(void)
                                        1,    /* nt_start */
                                        -1,   /* t_start */
                                        CS_TIME_MOMENT_RESTART_AUTO,
-                                       NULL);
+                                       nullptr);
   }
 
   {
@@ -1448,7 +1422,7 @@ _les_balance_time_moment(void)
                                        1,    /* nt_start */
                                        -1,   /* t_start */
                                        CS_TIME_MOMENT_RESTART_AUTO,
-                                       NULL);
+                                       nullptr);
   }
 
   {
@@ -1465,7 +1439,7 @@ _les_balance_time_moment(void)
                                        1,
                                        -1,
                                        CS_TIME_MOMENT_RESTART_AUTO,
-                                       NULL);
+                                       nullptr);
 
   }
 
@@ -1483,7 +1457,7 @@ _les_balance_time_moment(void)
                                        1,
                                        -1,
                                        CS_TIME_MOMENT_RESTART_AUTO,
-                                       NULL);
+                                       nullptr);
   }
 
   {
@@ -1499,7 +1473,7 @@ _les_balance_time_moment(void)
                                        1,    /* nt_start */
                                        -1,   /* t_start */
                                        CS_TIME_MOMENT_RESTART_AUTO,
-                                       NULL);
+                                       nullptr);
   }
 
   {
@@ -1515,7 +1489,7 @@ _les_balance_time_moment(void)
                                        1,    /* nt_start */
                                        -1,   /* t_start */
                                        CS_TIME_MOMENT_RESTART_AUTO,
-                                       NULL);
+                                       nullptr);
   }
 
   if (   _les_balance.type & CS_LES_BALANCE_RIJ_FULL
@@ -1533,7 +1507,7 @@ _les_balance_time_moment(void)
                                          1,    /* nt_start */
                                          -1,   /* t_start */
                                          CS_TIME_MOMENT_RESTART_AUTO,
-                                         NULL);
+                                         nullptr);
     }
     {
       /* dinut mean */
@@ -1548,7 +1522,7 @@ _les_balance_time_moment(void)
                                          1,    /* nt_start */
                                          -1,   /* t_start */
                                          CS_TIME_MOMENT_RESTART_AUTO,
-                                         NULL);
+                                         nullptr);
     }
   }
 }
@@ -1575,7 +1549,7 @@ _les_balance_time_moment_rij(void)
                                        1,    /* nt_start */
                                        -1,   /* t_start */
                                        CS_TIME_MOMENT_RESTART_AUTO,
-                                       NULL);
+                                       nullptr);
   }
 
   {
@@ -1591,7 +1565,7 @@ _les_balance_time_moment_rij(void)
                                        1,    /* nt_start */
                                        -1,   /* t_start */
                                        CS_TIME_MOMENT_RESTART_AUTO,
-                                       NULL);
+                                       nullptr);
   }
 
   {
@@ -1630,7 +1604,7 @@ _les_balance_time_moment_rij(void)
                                          1,    /* nt_start */
                                          -1,   /* t_start */
                                          CS_TIME_MOMENT_RESTART_AUTO,
-                                         NULL);
+                                         nullptr);
     }
   }
 
@@ -1640,14 +1614,14 @@ _les_balance_time_moment_rij(void)
                                 6,
                                 true, /* intensive*/
                                 _les_balance_compute_pdjuisym,
-                                NULL,
-                                NULL,
-                                NULL,
+                                nullptr,
+                                nullptr,
+                                nullptr,
                                 CS_TIME_MOMENT_MEAN,
                                 1,
                                 -1,
                                 CS_TIME_MOMENT_RESTART_AUTO,
-                                NULL);
+                                nullptr);
 
   /* dk(ui+uj) mean */
   cs_time_moment_define_by_func("dkuidkuj_m",
@@ -1655,14 +1629,14 @@ _les_balance_time_moment_rij(void)
                                 6,
                                 true, /* intensive*/
                                 _les_balance_compute_dkuidkuj,
-                                NULL,
-                                NULL,
-                                NULL,
+                                nullptr,
+                                nullptr,
+                                nullptr,
                                 CS_TIME_MOMENT_MEAN,
                                 1,
                                 -1,
                                 CS_TIME_MOMENT_RESTART_AUTO,
-                                NULL);
+                                nullptr);
 
   if (_les_balance.type & CS_LES_BALANCE_RIJ_BASE) {
 
@@ -1674,14 +1648,14 @@ _les_balance_time_moment_rij(void)
                                     1,
                                     true, /* intensive*/
                                     _les_balance_compute_smag,
-                                    NULL,
-                                    NULL,
-                                    NULL,
+                                    nullptr,
+                                    nullptr,
+                                    nullptr,
                                     CS_TIME_MOMENT_VARIANCE,
                                     1,
                                       -1,
                                     CS_TIME_MOMENT_RESTART_AUTO,
-                                    NULL);
+                                    nullptr);
     }
 
     /* uidktaujk */
@@ -1690,14 +1664,14 @@ _les_balance_time_moment_rij(void)
                                   9,
                                   true, /* intensive*/
                                   _les_balance_compute_uidktaujk,
-                                  NULL,
-                                  NULL,
-                                  NULL,
+                                  nullptr,
+                                  nullptr,
+                                  nullptr,
                                   CS_TIME_MOMENT_MEAN,
                                   1,
                                   -1,
                                   CS_TIME_MOMENT_RESTART_AUTO,
-                                  NULL);
+                                  nullptr);
   }
 
   if (_les_balance.type & CS_LES_BALANCE_RIJ_FULL) {
@@ -1724,7 +1698,7 @@ _les_balance_time_moment_rij(void)
                                            1,    /* nt_start */
                                            -1,   /* t_start */
                                            CS_TIME_MOMENT_RESTART_AUTO,
-                                           NULL);
+                                           nullptr);
       }
     }
 
@@ -1734,14 +1708,14 @@ _les_balance_time_moment_rij(void)
                                   6,
                                   true, /* intensive*/
                                   _les_balance_compute_nutdkuidkuj,
-                                  NULL,
-                                  NULL,
-                                  NULL,
+                                  nullptr,
+                                  nullptr,
+                                  nullptr,
                                   CS_TIME_MOMENT_MEAN,
                                   1,
                                   -1,
                                   CS_TIME_MOMENT_RESTART_AUTO,
-                                  NULL);
+                                  nullptr);
 
     /* dknutuidjuksym mean */
     cs_time_moment_define_by_func("dknutuidjuksym_m",
@@ -1749,14 +1723,14 @@ _les_balance_time_moment_rij(void)
                                   6,
                                   true, /* intensive*/
                                   _les_balance_compute_dknutuidjuksym,
-                                  NULL,
-                                  NULL,
-                                  NULL,
+                                  nullptr,
+                                  nullptr,
+                                  nullptr,
                                   CS_TIME_MOMENT_MEAN,
                                   1,
                                   -1,
                                   CS_TIME_MOMENT_RESTART_AUTO,
-                                  NULL);
+                                  nullptr);
 
     /* nutdkuiuj mean */
     {
@@ -1773,13 +1747,13 @@ _les_balance_time_moment_rij(void)
                                       true, /* intensive*/
                                       _les_balance_compute_nutdkuiuj,
                                       &(index[k]),
-                                      NULL,
-                                      NULL,
+                                      nullptr,
+                                      nullptr,
                                       CS_TIME_MOMENT_MEAN,
                                       1,
                                       -1,
                                       CS_TIME_MOMENT_RESTART_AUTO,
-                                      NULL);
+                                      nullptr);
       }
     }
 
@@ -1789,14 +1763,14 @@ _les_balance_time_moment_rij(void)
                                   3,
                                   true, /* intensive*/
                                   _les_balance_compute_dknutdiuk,
-                                  NULL,
-                                  NULL,
-                                  NULL,
+                                  nullptr,
+                                  nullptr,
+                                  nullptr,
                                   CS_TIME_MOMENT_MEAN,
                                   1,
                                   -1,
                                   CS_TIME_MOMENT_RESTART_AUTO,
-                                  NULL);
+                                  nullptr);
 
     {
       cs_time_moment_define_by_func("uidjnut_m",
@@ -1804,14 +1778,14 @@ _les_balance_time_moment_rij(void)
                                     9,
                                     true, /* intensive*/
                                     _les_balance_compute_uidjnut,
-                                    NULL,
-                                    NULL,
-                                    NULL,
+                                    nullptr,
+                                    nullptr,
+                                    nullptr,
                                     CS_TIME_MOMENT_MEAN,
                                     1,
                                     -1,
                                     CS_TIME_MOMENT_RESTART_AUTO,
-                                    NULL);
+                                    nullptr);
     }
   }
 }
@@ -1835,14 +1809,14 @@ _les_balance_time_moment_tui(void)
                                   3,
                                   true, /* intensive*/
                                   _les_balance_compute_djnutdiuj,
-                                  NULL,
-                                  NULL,
-                                  NULL,
+                                  nullptr,
+                                  nullptr,
+                                  nullptr,
                                   CS_TIME_MOMENT_MEAN,
                                   1,
                                   -1,
                                   CS_TIME_MOMENT_RESTART_AUTO,
-                                  NULL);
+                                  nullptr);
   }
 
   /* Define time moments for Tui balance */
@@ -1864,7 +1838,7 @@ _les_balance_time_moment_tui(void)
                                            1,    /* nt_start */
                                            -1,   /* t_start */
                                            CS_TIME_MOMENT_RESTART_AUTO,
-                                           NULL);
+                                           nullptr);
       }
 
       {
@@ -1881,7 +1855,7 @@ _les_balance_time_moment_tui(void)
                                            1,    /* nt_start */
                                            -1,   /* t_start */
                                            CS_TIME_MOMENT_RESTART_AUTO,
-                                           NULL);
+                                           nullptr);
       }
 
       {
@@ -1898,7 +1872,7 @@ _les_balance_time_moment_tui(void)
                                            1,    /* nt_start */
                                            -1,   /* t_start */
                                            CS_TIME_MOMENT_RESTART_AUTO,
-                                           NULL);
+                                           nullptr);
       }
 
       {
@@ -1915,7 +1889,7 @@ _les_balance_time_moment_tui(void)
                                            1,    /* nt_start */
                                            -1,   /* t_start */
                                            CS_TIME_MOMENT_RESTART_AUTO,
-                                           NULL);
+                                           nullptr);
       }
 
       {
@@ -1932,7 +1906,7 @@ _les_balance_time_moment_tui(void)
                                            1,    /* nt_start */
                                            -1,   /* t_start */
                                            CS_TIME_MOMENT_RESTART_AUTO,
-                                           NULL);
+                                           nullptr);
       }
 
       {
@@ -1949,7 +1923,7 @@ _les_balance_time_moment_tui(void)
                                            1,    /* nt_start */
                                            -1,   /* t_start */
                                            CS_TIME_MOMENT_RESTART_AUTO,
-                                           NULL);
+                                           nullptr);
       }
 
       /* djtdjui mean */
@@ -1960,13 +1934,13 @@ _les_balance_time_moment_tui(void)
                                     true, /* intensive*/
                                     _les_balance_compute_djtdjui,
                                     f,
-                                    NULL,
-                                    NULL,
+                                    nullptr,
+                                    nullptr,
                                     CS_TIME_MOMENT_MEAN,
                                     1,
                                     -1,
                                     CS_TIME_MOMENT_RESTART_AUTO,
-                                    NULL);
+                                    nullptr);
       /* tuiuj mean */
       _les_balance_get_tm_label(isca, "tuiuj_m", buffer);
       cs_time_moment_define_by_func(buffer,
@@ -1975,13 +1949,13 @@ _les_balance_time_moment_tui(void)
                                     true, /* intensive*/
                                     _les_balance_compute_tuiuj,
                                     f,
-                                    NULL,
-                                    NULL,
+                                    nullptr,
+                                    nullptr,
                                     CS_TIME_MOMENT_MEAN,
                                     1,
                                     -1,
                                     CS_TIME_MOMENT_RESTART_AUTO,
-                                    NULL);
+                                    nullptr);
 
       {
         /* tp mean */
@@ -1997,7 +1971,7 @@ _les_balance_time_moment_tui(void)
                                            1,    /* nt_start */
                                            -1,   /* t_start */
                                            CS_TIME_MOMENT_RESTART_AUTO,
-                                           NULL);
+                                           nullptr);
       }
 
       {
@@ -2014,7 +1988,7 @@ _les_balance_time_moment_tui(void)
                                            1,    /* nt_start */
                                            -1,   /* t_start */
                                            CS_TIME_MOMENT_RESTART_AUTO,
-                                           NULL);
+                                           nullptr);
       }
 
       {
@@ -2025,13 +1999,13 @@ _les_balance_time_moment_tui(void)
                                       true, /* intensive*/
                                       _les_balance_compute_uidjt,
                                       f,
-                                      NULL,
-                                      NULL,
+                                      nullptr,
+                                      nullptr,
                                       CS_TIME_MOMENT_MEAN,
                                       1,
                                       -1,
                                       CS_TIME_MOMENT_RESTART_AUTO,
-                                      NULL);
+                                      nullptr);
       }
 
       /* ditdit mean */
@@ -2042,13 +2016,13 @@ _les_balance_time_moment_tui(void)
                                     true, /* intensive*/
                                     _les_balance_compute_ditdit,
                                     f,
-                                    NULL,
-                                    NULL,
+                                    nullptr,
+                                    nullptr,
                                     CS_TIME_MOMENT_MEAN,
                                     1,
                                     -1,
                                     CS_TIME_MOMENT_RESTART_AUTO,
-                                    NULL);
+                                    nullptr);
       {
         /* ttui mean */
         int moment_f_id[] = {f_id, f_id, CS_F_(vel)->id};
@@ -2063,7 +2037,7 @@ _les_balance_time_moment_tui(void)
                                            1,    /* nt_start */
                                            -1,   /* t_start */
                                            CS_TIME_MOMENT_RESTART_AUTO,
-                                           NULL);
+                                           nullptr);
       }
 
       if (_les_balance.type & CS_LES_BALANCE_TUI_BASE) {
@@ -2075,13 +2049,13 @@ _les_balance_time_moment_tui(void)
                                       true, /* intensive*/
                                       _les_balance_compute_tdjtauij,
                                       f,
-                                      NULL,
-                                      NULL,
+                                      nullptr,
+                                      nullptr,
                                       CS_TIME_MOMENT_MEAN,
                                       1,
                                       -1,
                                       CS_TIME_MOMENT_RESTART_AUTO,
-                                      NULL);
+                                      nullptr);
 
         /* _uidivturflux mean */
         _les_balance_get_tm_label(isca, "uidivturflux_m", buffer);
@@ -2091,13 +2065,13 @@ _les_balance_time_moment_tui(void)
                                       true, /* intensive*/
                                       _les_balance_compute_uidivturflux,
                                       f,
-                                      NULL,
-                                      NULL,
+                                      nullptr,
+                                      nullptr,
                                       CS_TIME_MOMENT_MEAN,
                                       1,
                                       -1,
                                       CS_TIME_MOMENT_RESTART_AUTO,
-                                      NULL);
+                                      nullptr);
 
         /* _tdivturflux mean */
         _les_balance_get_tm_label(isca, "tdivturflux_m", buffer);
@@ -2107,13 +2081,13 @@ _les_balance_time_moment_tui(void)
                                       true, /* intensive*/
                                       _les_balance_compute_tdivturflux,
                                       f,
-                                      NULL,
-                                      NULL,
+                                      nullptr,
+                                      nullptr,
                                       CS_TIME_MOMENT_MEAN,
                                       1,
                                       -1,
                                       CS_TIME_MOMENT_RESTART_AUTO,
-                                      NULL);
+                                      nullptr);
       }
 
       if (_les_balance.type & CS_LES_BALANCE_TUI_FULL) {
@@ -2131,7 +2105,7 @@ _les_balance_time_moment_tui(void)
                                              1,    /* nt_start */
                                              -1,   /* t_start */
                                              CS_TIME_MOMENT_RESTART_AUTO,
-                                             NULL);
+                                             nullptr);
         }
 
         /* nutditdit mean */
@@ -2142,13 +2116,13 @@ _les_balance_time_moment_tui(void)
                                       true, /* intensive*/
                                       _les_balance_compute_nutditdit,
                                       f,
-                                      NULL,
-                                      NULL,
+                                      nullptr,
+                                      nullptr,
                                       CS_TIME_MOMENT_MEAN,
                                       1,
                                       -1,
                                       CS_TIME_MOMENT_RESTART_AUTO,
-                                      NULL);
+                                      nullptr);
 
         {
           /* nuttdjui mean */
@@ -2164,7 +2138,7 @@ _les_balance_time_moment_tui(void)
                                              1,    /* nt_start */
                                              -1,   /* t_start */
                                              CS_TIME_MOMENT_RESTART_AUTO,
-                                             NULL);
+                                             nullptr);
         }
 
         {
@@ -2176,13 +2150,13 @@ _les_balance_time_moment_tui(void)
                                         true, /* intensive*/
                                         _les_balance_compute_nutuidjt,
                                         f,
-                                        NULL,
-                                        NULL,
+                                        nullptr,
+                                        nullptr,
                                         CS_TIME_MOMENT_MEAN,
                                         1,
                                         -1,
                                         CS_TIME_MOMENT_RESTART_AUTO,
-                                        NULL);
+                                        nullptr);
         }
 
         /* nutdjuidjt mean */
@@ -2193,13 +2167,13 @@ _les_balance_time_moment_tui(void)
                                       true, /* intensive*/
                                       _les_balance_compute_nutdjuidjt,
                                       f,
-                                      NULL,
-                                      NULL,
+                                      nullptr,
+                                      nullptr,
                                       CS_TIME_MOMENT_MEAN,
                                       1,
                                       -1,
                                       CS_TIME_MOMENT_RESTART_AUTO,
-                                      NULL);
+                                      nullptr);
 
         {
           /* tdit mean */
@@ -2215,7 +2189,7 @@ _les_balance_time_moment_tui(void)
                                              1,    /* nt_start */
                                              -1,   /* t_start */
                                              CS_TIME_MOMENT_RESTART_AUTO,
-                                             NULL);
+                                             nullptr);
         }
 
         {
@@ -2232,7 +2206,7 @@ _les_balance_time_moment_tui(void)
                                              1,    /* nt_start */
                                              -1,   /* t_start */
                                              CS_TIME_MOMENT_RESTART_AUTO,
-                                             NULL);
+                                             nullptr);
         }
 
         {
@@ -2249,7 +2223,7 @@ _les_balance_time_moment_tui(void)
                                              1,    /* nt_start */
                                              -1,   /* t_start */
                                              CS_TIME_MOMENT_RESTART_AUTO,
-                                             NULL);
+                                             nullptr);
         }
 
         /* djnuttdiuj mean */
@@ -2260,13 +2234,13 @@ _les_balance_time_moment_tui(void)
                                       true, /* intensive*/
                                       _les_balance_compute_djnuttdiuj,
                                       f,
-                                      NULL,
-                                      NULL,
+                                      nullptr,
+                                      nullptr,
                                       CS_TIME_MOMENT_MEAN,
                                       1,
                                       -1,
                                       CS_TIME_MOMENT_RESTART_AUTO,
-                                      NULL);
+                                      nullptr);
         {
           /* tdinut mean */
           int moment_f_id[] = {f_id, _gradnut->id};
@@ -2281,7 +2255,7 @@ _les_balance_time_moment_tui(void)
                                              1,    /* nt_start */
                                              -1,   /* t_start */
                                              CS_TIME_MOMENT_RESTART_AUTO,
-                                             NULL);
+                                             nullptr);
         }
 
       }
@@ -2302,7 +2276,7 @@ _les_balance_allocate_rij(void)
   const cs_lnum_t n_cells = cs_glob_mesh->n_cells;
 
   /* Initialization */
-  cs_les_balance_rij_t *brij = NULL;
+  cs_les_balance_rij_t *brij = nullptr;
 
   BFT_MALLOC(brij, 1, cs_les_balance_rij_t);
 
@@ -2339,7 +2313,7 @@ _les_balance_allocate_tui(void)
   const cs_lnum_t n_cells = cs_glob_mesh->n_cells;
 
   /* Initialization */
-  cs_les_balance_tui_t *btui = NULL;
+  cs_les_balance_tui_t *btui = nullptr;
 
   BFT_MALLOC(btui, 1, cs_les_balance_tui_t);
 
@@ -2425,30 +2399,30 @@ _check_restart_type(void)
 {
   int b_type = -1;
 
-  cs_restart_t *rp = NULL;
+  cs_restart_t *rp = nullptr;
   const char default_path[] = "restart/les_balance.csc";
 
   int is_reg = cs_file_isreg(default_path);
   if (is_reg)
     rp = cs_restart_create("les_balance.csc",
-                           NULL,
+                           nullptr,
                            CS_RESTART_MODE_READ);
 
   else {
     is_reg = cs_file_isreg("restart/les_balance");
     if (is_reg)
       rp = cs_restart_create("les_balance",
-                             NULL,
+                             nullptr,
                              CS_RESTART_MODE_READ);
   }
 
-  if (rp == NULL)
+  if (rp == nullptr)
     bft_error
       (__FILE__, __LINE__, 0,
        _("LES balance restart file not present: %s."),
        default_path);
 
-  if (rp != NULL)  {
+  if (rp != nullptr)  {
     cs_restart_read_section(rp,
                             "les_balance_type",
                             CS_MESH_LOCATION_NONE,
@@ -2534,13 +2508,13 @@ _les_balance_initialize_tui(void)
 /*----------------------------------------------------------------------------
  * Destroy a given cs_les_balance_rij_t structure pointer
  *
- * returns NULL
+ * returns nullptr
  *----------------------------------------------------------------------------*/
 
 static cs_les_balance_rij_t *
 _les_balance_destroy_rij(cs_les_balance_rij_t *brij)
 {
-  if (brij == NULL)
+  if (brij == nullptr)
     return brij;
 
   BFT_FREE(brij->prodij);
@@ -2563,19 +2537,19 @@ _les_balance_destroy_rij(cs_les_balance_rij_t *brij)
 
   BFT_FREE(brij);
 
-  return NULL;
+  return nullptr;
 }
 
 /*----------------------------------------------------------------------------
  * Destroy an array of cs_les_balance_tui_t structure pointers
  *
- * returns NULL
+ * returns nullptr
  *----------------------------------------------------------------------------*/
 
 static cs_les_balance_tui_t **
 _les_balance_destroy_tui(cs_les_balance_tui_t **btui)
 {
-  if (btui == NULL)
+  if (btui == nullptr)
     return btui;
 
   for (int isca = 0; isca < nscal; isca++) {
@@ -2846,7 +2820,7 @@ cs_les_balance_create(void)
 
   for (int m_id = 0; m_id < n_moments; m_id++) {
     cs_field_t *f = cs_time_moment_get_field(m_id);
-    if (f != NULL && !cs_field_is_key_set(f, log_key_id))
+    if (f != nullptr && !cs_field_is_key_set(f, log_key_id))
       cs_field_set_key_int(f, log_key_id, 1);
   }
 #endif
@@ -2885,9 +2859,9 @@ cs_les_balance_compute_rij(void)
   /* Rij balance structure */
   cs_les_balance_rij_t *brij = _les_balance.brij;
 
-  cs_real_3_t *nutui = NULL, *dnutdxkdukdxi = NULL, *dnutdxi = NULL;
-  cs_real_6_t *nutduidxkdujdxk = NULL, *dnutdxkuidukdxjsym = NULL;
-  cs_real_33_t *uidtaujkdxk = NULL, *uidnutdxj = NULL;
+  cs_real_3_t *nutui = nullptr, *dnutdxkdukdxi = nullptr, *dnutdxi = nullptr;
+  cs_real_6_t *nutduidxkdujdxk = nullptr, *dnutdxkuidukdxjsym = nullptr;
+  cs_real_33_t *uidtaujkdxk = nullptr, *uidnutdxj = nullptr;
 
   /* Time moments retrieved by name */
   cs_real_t *p      =                 _les_balance_get_tm_by_name("p_m")->val;
@@ -3195,11 +3169,11 @@ cs_les_balance_compute_rij(void)
                        static_cast<cs_gradient_limit_t>(eqp->imligr),
                        eqp->epsrgr,
                        eqp->climgr,
-                       NULL,
+                       nullptr,
                        &bc_coeffs,
                        nut,
-                       NULL,
-                       NULL,
+                       nullptr,
+                       nullptr,
                        w3);
 
     for (cs_lnum_t iii = 0; iii < 6; iii++) {
@@ -3697,11 +3671,11 @@ cs_les_balance_compute_tui(void)
                          static_cast<cs_gradient_limit_t>(eqp->imligr),
                          eqp->epsrgr,
                          eqp->climgr,
-                         NULL,
+                         nullptr,
                          &bc_coeffs,
                          nut,
-                         NULL,
-                         NULL,
+                         nullptr,
+                         nullptr,
                          w1);
 
       for (cs_lnum_t ii = 0; ii < 3; ii++) {
@@ -3833,10 +3807,10 @@ cs_les_balance_write_restart(void)
 {
   const char  restart_name[] = "les_balance.csc";
   cs_restart_t *rp = cs_restart_create(restart_name,
-                                       NULL,
+                                       nullptr,
                                        CS_RESTART_MODE_WRITE);
 
-  if (rp == NULL)
+  if (rp == nullptr)
     bft_error(__FILE__, __LINE__, 0,
               _("Abort while opening the auxiliary restart "
                 "file in write mode for the LES balance module.\n"

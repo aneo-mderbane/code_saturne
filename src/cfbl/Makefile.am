@@ -21,6 +21,7 @@
 # Street, Fifth Floor, Boston, MA 02110-1301, USA.
 
 #-------------------------------------------------------------------------------
+
 # PLE dependency
 
 if HAVE_INTERNAL_PLE
@@ -30,6 +31,7 @@ else
 endif
 
 # Main part
+
 AM_CPPFLAGS = \
 -I$(top_srcdir)/src/alge \
 -I$(top_srcdir)/src/base \
@@ -44,23 +46,6 @@ $(MPI_CPPFLAGS)
 
 AM_CFLAGS = $(CFLAGS_DBG) $(CFLAGS_OPT) $(CFLAGS_SHARED)
 AM_CXXFLAGS = $(CXXFLAGS_STD) $(CXXFLAGS_SYCL) $(CXXFLAGS_DBG) $(CXXFLAGS_OPT) $(CXXFLAGS_SHARED)
-
-AM_FCFLAGS = \
-$(FCMODINCLUDE)$(top_builddir)/src \
-$(FCMODINCLUDE)$(top_builddir)/src/alge \
-$(FCMODINCLUDE)$(top_builddir)/src/base \
-$(FCMODINCLUDE)$(top_builddir)/src/atmo \
-$(FCMODINCLUDE)$(top_builddir)/src/cfbl \
-$(FCMODINCLUDE)$(top_builddir)/src/cogz \
-$(FCMODINCLUDE)$(top_builddir)/src/comb \
-$(FCMODINCLUDE)$(top_builddir)/src/ctwr \
-$(FCMODINCLUDE)$(top_builddir)/src/elec \
-$(FCMODINCLUDE)$(top_builddir)/src/lagr \
-$(FCMODINCLUDE)$(top_builddir)/src/pprt \
-$(FCMODINCLUDE)$(top_builddir)/src/rayt \
-$(FCMODINCLUDE)$(top_builddir)/src/turb \
-$(FCMODINCLUDE)$(top_builddir)/src/user \
-$(FCFLAGS_DBG) $(FCFLAGS_OPT) $(FCFLAGS_SHARED)
 
 AM_LDFLAGS =
 
@@ -82,17 +67,24 @@ cs_hgn_source_terms_step.h
 
 noinst_LIBRARIES = libcscfbl.a
 libcscfbl_a_SOURCES = \
-cfvarp.f90 \
 cs_cf_boundary_conditions.cpp \
-cs_cf_boundary_flux.c \
-cs_cf_compute.c \
-cs_cf_energy.c \
-cs_cf_model.c \
-cs_cf_thermo.c \
-cs_hgn_thermo.c \
-cs_hgn_phase_thermo.c \
-cs_hgn_source_terms_step.c
+cs_cf_boundary_flux.cpp \
+cs_cf_compute.cpp \
+cs_cf_energy.cpp \
+cs_cf_model.cpp \
+cs_cf_thermo.cpp \
+cs_hgn_thermo.cpp \
+cs_hgn_phase_thermo.cpp \
+cs_hgn_source_terms_step.cpp
+
+# Rules for CUDA (not known by Automake)
+
+if HAVE_CUDA_CPP
+.cpp.$(OBJEXT):
+	$(NVCC) $(DEFS) $(AM_CPPFLAGS) -I$(top_srcdir)/src/base -I../.. $(NVCCFLAGS) $(NVCCFLAGS_DBG) $(NVCCFLAGS_OPT) $(NVCCFLAGS_CPP) -c -o $@ $<
+endif
+
+# Additional rules
 
 clean-local:
-	-rm -f *__genmod.f90 *__genmod.mod
 	-rm -rf .deps

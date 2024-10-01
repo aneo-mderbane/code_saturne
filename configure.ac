@@ -54,7 +54,7 @@ m4_define([cs_version_string],
           [m4_normalize(esyscmd([build-aux/cs_version.py]))])
 
 AC_INIT([code_saturne],[cs_version_string],[saturne-support@edf.fr],[],[https://code-saturne.org])
-AC_CONFIG_SRCDIR([src/apps/cs_solver.c])
+AC_CONFIG_SRCDIR([src/apps/cs_solver.cpp])
 
 AC_CONFIG_AUX_DIR(build-aux)
 AC_CONFIG_MACRO_DIR(m4)
@@ -1269,13 +1269,7 @@ AC_CONFIG_FILES([Makefile
                  src/turb/Makefile src/alge/Makefile src/mesh/Makefile
                  src/user/Makefile src/user_examples/Makefile
                  src/meg/Makefile
-                 python/Makefile python/code_saturne/Makefile python/code_saturne/base/Makefile
-                 python/code_saturne/studymanager/Makefile
-                 python/code_saturne/model/Makefile
-                 python/code_saturne/gui/Makefile python/code_saturne/gui/base/Makefile
-                 python/code_saturne/gui/case/Makefile
-                 python/code_saturne/gui/trackcvg/Makefile
-                 python/code_saturne/gui/studymanager_gui/Makefile
+                 python/Makefile
                  docs/Makefile docs/doxygen/Makefile docs/style/csvers.tex
                  docs/refcard/Makefile docs/theory/Makefile
                  tests/Makefile

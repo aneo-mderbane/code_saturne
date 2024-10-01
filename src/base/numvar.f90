@@ -142,10 +142,6 @@ module numvar
   !> number of specific physics scalars
   integer, save :: nscapp = 0
 
-  !> \anchor nscasp
-  !> number of species scalars
-  integer(c_int), pointer, save :: nscasp
-
   !> \anchor iuma
   !> mesh velocity component \f$ w_x \f$
   integer, save :: iuma = 0
@@ -171,9 +167,6 @@ module numvar
   !> \addtogroup physical_prop
   !> \{
 
-  !> Density at the current time step (equal to icrom, kept for compatibility)
-  integer, save :: irom = -1
-
   !> dynamic molecular viscosity (in kg/(m.s))
   integer, save :: iviscl = -1
 
@@ -192,9 +185,6 @@ module numvar
   !> do scalars behave as a temperature (regarding multiplication by Cp) ?
   integer, save :: kscacp = -1
 
-  !> variable density field id key for scalars
-  integer, save :: kromsl = -1
-
   !> source terms at previous time step for 2nd order
   integer, save :: kstprv = -1
 
@@ -204,62 +194,17 @@ module numvar
   !> turbulent schmidt key for scalars
   integer, save :: ksigmas = -1
 
-  !> turbulent flow models GGDH and AFM key for scalar
-  integer, save :: kctheta = -1
-
-  !> convective mass flux of the variables at the previous time-step
-  integer, save :: ifluaa(nvarmx)
-
   !> cell density field ids of the variables
   integer, save :: icrom = -1
 
   !> boundary density field ids of the variables
   integer, save :: ibrom = -1
 
-  !> field ids of the cell porosity
-  integer, save :: ipori = -1, iporf = -1
-
-  !> dynamic constant of Smagorinsky
-  integer, save :: ismago = -1
-
-  !> field ids of the anisotropic viscosity
-  !> \remark turbulent or Darcy module anisotropic diffusion
-  integer, save :: ivsten = -1, ivstes = -1
-
-  !> Courant number
-  integer, save :: icour = -1
-
-  !> Fourier number
-  integer, save :: ifour = -1
-
-  !> Total pressure at cell centers
-  !> \f$ P_{tot} = P^\star +\rho \vect{g} \cdot (\vect{x}-\vect{x}_0) \f$
-  integer, save :: iprtot = -1
-
-  !> Mesh velocity viscosity for the ALE module
-  !> \remark might be orthotropic
-  integer, save :: ivisma = -1
-
   !> pointer for dilatation source terms
   integer, save :: iustdy(nscamx)
 
   !> pointer for global dilatation source terms
   integer, save :: itsrho = -1
-
-  !> pointer for deduced mass fraction in case of gas mix
-  integer, save :: iddgas = -1
-
-  !> pointer for gas mix molar mass
-  integer, save :: igmxml = -1
-
-  !> field id of the stresses at boundary  (if post-processed)
-  integer, save :: iforbr = -1
-
-  !>  field id of \f$y^+\f$ at boundary (if post-processed)
-  integer, save :: iyplbr = -1
-
-  !>  field id of temperature at boundary
-  integer, save ::  itempb = -1
 
   !> \}
   !----------------------------------------------------------------------------
@@ -287,62 +232,7 @@ module numvar
   !> Field id for variable i
   integer, save :: ivarfl(nvarmx)
 
-  !> Field id for the dttens tensor
-  integer, save :: idtten = -1
-
   !> \}
-
-  !=============================================================================
-
-  interface
-
-    !---------------------------------------------------------------------------
-
-    !> \cond DOXYGEN_SHOULD_SKIP_THIS
-
-    !---------------------------------------------------------------------------
-
-    ! Interface to C function retrieving the number of species in the gas mix
-    ! if gas mix model is enabled (igmix)
-
-    subroutine cs_f_gas_mix_get_pointers(nscasp) &
-      bind(C, name='cs_f_gas_mix_get_pointers')
-      use, intrinsic :: iso_c_binding
-      implicit none
-      type(c_ptr), intent(out) :: nscasp
-    end subroutine cs_f_gas_mix_get_pointers
-
-    !---------------------------------------------------------------------------
-
-    !> (DOXYGEN_SHOULD_SKIP_THIS) \endcond
-
-    !---------------------------------------------------------------------------
-
-  end interface
-
-  !=============================================================================
-
-contains
-
-  !=============================================================================
-
-  !> \brief Initialize Fortran gas mix API.
-  !> This maps Fortran pointers to global C variables.
-
-  subroutine gas_mix_options_init
-
-    use, intrinsic :: iso_c_binding
-    implicit none
-
-    ! Local variables
-
-    type(c_ptr) :: c_nscasp
-
-    call cs_f_gas_mix_get_pointers(c_nscasp)
-
-    call c_f_pointer(c_nscasp, nscasp)
-
-  end subroutine gas_mix_options_init
 
   !=============================================================================
 

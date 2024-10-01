@@ -106,38 +106,10 @@ const cs_wall_distance_options_t *cs_glob_wall_distance_options
 /*! \cond DOXYGEN_SHOULD_SKIP_THIS */
 
 /*============================================================================
- * Prototypes for functions intended for use only by Fortran wrappers.
- * (descriptions follow, with function bodies).
- *============================================================================*/
-
-void
-cs_f_wall_distance_get_pointers(int **ineedy,
-                                int **imajdy);
-
-/*============================================================================
  * Private function definitions
  *============================================================================*/
 
 /*! (DOXYGEN_SHOULD_SKIP_THIS) \endcond */
-
-/*============================================================================
- * Fortran wrapper function definitions
- *============================================================================*/
-
-/*----------------------------------------------------------------------------
- * Get pointers to int indicators concerning wall distance computation.
- *
- * This function is intended for use by Fortran wrappers, and
- * enables mapping to Fortran global pointers.
- *----------------------------------------------------------------------------*/
-
-void
-cs_f_wall_distance_get_pointers(int **ineedy,
-                                int **imajdy)
-{
-  *ineedy = &(_wall_distance_options.need_compute);
-  *imajdy = &(_wall_distance_options.is_up_to_date);
-}
 
 /*============================================================================
  * Public function definitions
@@ -281,9 +253,9 @@ cs_wall_distance(int iterns)
 
   /* Immersed boundaries */
   const cs_real_t *c_w_face_surf
-    = (const cs_real_t *restrict)mq->c_w_face_surf;
+    = (const cs_real_t *)mq->c_w_face_surf;
   const cs_real_t *c_w_dist_inv
-    = (const cs_real_t *restrict)mq->c_w_dist_inv;
+    = (const cs_real_t *)mq->c_w_dist_inv;
 
   if (c_w_face_surf != NULL && c_w_dist_inv != NULL) {
     have_diff = 0;

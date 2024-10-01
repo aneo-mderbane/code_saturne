@@ -179,7 +179,7 @@
  *                               - 0 upwind scheme
  *                               - 1 imposed flux
  * \param[in, out] fimp          \f$ \tens{f_s}^{imp} \f$
- * \param[in]      smbrp         Right hand side \f$ \vect{Rhs}^k \f$
+ * \param[in, out] smbrp         Right hand side \f$ \vect{Rhs}^k \f$
  * \param[in, out] pvar          current variable
  * \param[out]     eswork        prediction-stage error estimator
  *                               (if iescap >= 0)
@@ -422,7 +422,7 @@ _equation_iterative_solve_strided(int                   idtvar,
   /* We compute the total explicit balance. */
   cs_real_t thetex = 1. - thetap;
 
-  /* Si THETEX=0, ce n'est pas la peine d'en rajouter */
+  /* If THETEX=0, no need to add anything */
   if (cs_math_fabs(thetex) > cs_math_epzero) {
     inc = 1;
 
@@ -1672,7 +1672,7 @@ cs_equation_iterative_solve_scalar(int                   idtvar,
       /* Computation of the variable relaxation coefficient */
       lvar = -1;
 
-      ctx.parallel_for(n_cells_ext, [=] CS_F_HOST_DEVICE (cs_lnum_t cell_id) {
+      ctx.parallel_for(n_cells, [=] CS_F_HOST_DEVICE (cs_lnum_t cell_id) {
         adxkm1[cell_id] = adxk[cell_id];
         adxk[cell_id] = - rhs0[cell_id];
       });
@@ -1764,7 +1764,7 @@ cs_equation_iterative_solve_scalar(int                   idtvar,
        and compute the new residual */
 
     if (iswdyp <= 0) {
-      ctx.parallel_for(n_cells_ext, [=] CS_F_HOST_DEVICE (cs_lnum_t cell_id) {
+      ctx.parallel_for(n_cells, [=] CS_F_HOST_DEVICE (cs_lnum_t cell_id) {
         pvar[cell_id] += dpvar[cell_id];
         /* smbini already contains unsteady terms and mass source terms
            of the RHS updated at each sweep */
@@ -1774,7 +1774,7 @@ cs_equation_iterative_solve_scalar(int                   idtvar,
     }
     else if (iswdyp == 1) {
       if (alph < 0.) break;
-      ctx.parallel_for(n_cells_ext, [=] CS_F_HOST_DEVICE (cs_lnum_t cell_id) {
+      ctx.parallel_for(n_cells, [=] CS_F_HOST_DEVICE (cs_lnum_t cell_id) {
         pvar[cell_id] += alph*dpvar[cell_id];
         /* smbini already contains unsteady terms and mass source terms
            of the RHS updated at each sweep */
@@ -1783,7 +1783,7 @@ cs_equation_iterative_solve_scalar(int                   idtvar,
       });
     }
     else if (iswdyp >= 2) {
-      ctx.parallel_for(n_cells_ext, [=] CS_F_HOST_DEVICE (cs_lnum_t cell_id) {
+      ctx.parallel_for(n_cells, [=] CS_F_HOST_DEVICE (cs_lnum_t cell_id) {
         pvar[cell_id] += alph*dpvar[cell_id] + beta*dpvarm1[cell_id];
         /* smbini already contains unsteady terms and mass source terms
            of the RHS updated at each sweep */
@@ -1909,7 +1909,7 @@ cs_equation_iterative_solve_scalar(int                   idtvar,
       });
 
       inc  = 1;
-      imasac = 0; /* mass accumluation not taken into account */
+      imasac = 0; /* mass accumulation not taken into account */
 
       ctx.wait();
 
@@ -2157,7 +2157,7 @@ cs_equation_iterative_solve_scalar(int                   idtvar,
  *                               - 0 upwind scheme
  *                               - 1 imposed flux
  * \param[in, out] fimp          \f$ \tens{f_s}^{imp} \f$
- * \param[in]      smbrp         Right hand side \f$ \vect{Rhs}^k \f$
+ * \param[in, out] smbrp         Right hand side \f$ \vect{Rhs}^k \f$
  * \param[in, out] pvar          current variable
  * \param[out]     eswork        prediction-stage error estimator
  *                               (if iescap >= 0)
@@ -2302,8 +2302,8 @@ cs_equation_iterative_solve_vector(int                   idtvar,
  * \param[in]     icvfli        boundary face indicator array of convection flux
  *                               - 0 upwind scheme
  *                               - 1 imposed flux
- * \param[in]     fimp          \f$ \tens{f_s}^{imp} \f$
- * \param[in]     smbrp         Right hand side \f$ \vect{Rhs}^k \f$
+ * \param[in,out] fimp          \f$ \tens{f_s}^{imp} \f$
+ * \param[in,out] smbrp         Right hand side \f$ \vect{Rhs}^k \f$
  * \param[in,out] pvar          current variable
  */
 /*----------------------------------------------------------------------------*/

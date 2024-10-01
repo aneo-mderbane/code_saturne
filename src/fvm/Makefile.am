@@ -105,42 +105,42 @@ libfvm_a_LIBADD =
 libfvm_filters_a_LIBADD =
 
 libfvm_a_SOURCES = \
-fvm_box.c \
-fvm_box_tree.c \
-fvm_convert_array.c \
-fvm_defs.c \
-fvm_group.c \
-fvm_hilbert.c \
-fvm_interpolate.c \
-fvm_io_num.c \
-fvm_morton.c \
-fvm_neighborhood.c \
-fvm_nodal.c \
-fvm_nodal_append.c \
-fvm_nodal_extrude.c \
-fvm_nodal_from_desc.c \
-fvm_nodal_order.c \
-fvm_nodal_project.c \
-fvm_nodal_triangulate.c \
-fvm_nodal_extract.c \
-fvm_periodicity.c \
-fvm_point_location.c \
-fvm_selector.c \
-fvm_selector_postfix.c \
-fvm_tesselation.c \
-fvm_trace.c \
-fvm_triangulate.c
+fvm_box.cpp \
+fvm_box_tree.cpp \
+fvm_convert_array.cpp \
+fvm_defs.cpp \
+fvm_group.cpp \
+fvm_hilbert.cpp \
+fvm_interpolate.cpp \
+fvm_io_num.cpp \
+fvm_morton.cpp \
+fvm_neighborhood.cpp \
+fvm_nodal.cpp \
+fvm_nodal_append.cpp \
+fvm_nodal_extrude.cpp \
+fvm_nodal_from_desc.cpp \
+fvm_nodal_order.cpp \
+fvm_nodal_project.cpp \
+fvm_nodal_triangulate.cpp \
+fvm_nodal_extract.cpp \
+fvm_periodicity.cpp \
+fvm_point_location.cpp \
+fvm_selector.cpp \
+fvm_selector_postfix.cpp \
+fvm_tesselation.cpp \
+fvm_trace.cpp \
+fvm_triangulate.cpp
 
 local_libraries_add =
 
 libfvm_filters_a_SOURCES = \
-fvm_to_ensight.c \
-fvm_to_ensight_case.c \
-fvm_to_histogram.c \
-fvm_to_plot.c \
-fvm_to_time_plot.c \
-fvm_writer.c \
-fvm_writer_helper.c
+fvm_to_ensight.cpp \
+fvm_to_ensight_case.cpp \
+fvm_to_histogram.cpp \
+fvm_to_plot.cpp \
+fvm_to_time_plot.cpp \
+fvm_writer.cpp \
+fvm_writer_helper.cpp
 
 if HAVE_CCM
 noinst_LIBRARIES += libfvm_ccm.a
@@ -150,19 +150,19 @@ libfvm_ccm_a_CPPFLAGS =\
 -I$(top_srcdir)/src/mesh \
 $(CFLAGS_DBG) $(CFLAGS_OPT) \
 $(CCM_CPPFLAGS) $(MPI_CPPFLAGS)
-libfvm_ccm_a_SOURCES = fvm_to_ccm.c
+libfvm_ccm_a_SOURCES = fvm_to_ccm.cpp
 libfvm_filters_a_LIBADD += libfvm_ccm_a-fvm_to_ccm.$(OBJEXT)
 endif
 
 if HAVE_CGNS
 noinst_LIBRARIES += libfvm_cgns.a
-libfvm_cgns_a_SOURCES = fvm_to_cgns.c
+libfvm_cgns_a_SOURCES = fvm_to_cgns.cpp
 libfvm_filters_a_LIBADD += libfvm_cgns_a-fvm_to_cgns.$(OBJEXT)
 endif
 
 if HAVE_MED
 noinst_LIBRARIES += libfvm_med.a
-libfvm_med_a_SOURCES = fvm_to_med.c
+libfvm_med_a_SOURCES = fvm_to_med.cpp
 libfvm_filters_a_LIBADD += libfvm_med_a-fvm_to_med.$(OBJEXT)
 endif
 
@@ -251,7 +251,7 @@ $(MELISSA_CPPFLAGS) $(MPI_CPPFLAGS)
 libfvm_melissa_a_CXXFLAGS = \
 $(CXXFLAGS_DBG) $(CXXFLAGS_OPT) \
 $(MELISSA_CXXFLAGS) $(CXXFLAGS_SHARED)
-libfvm_melissa_a_SOURCES = fvm_to_melissa.c
+libfvm_melissa_a_SOURCES = fvm_to_melissa.cpp
 noinst_LIBRARIES += libfvm_melissa.a
 
 if HAVE_PLUGIN_MELISSA
@@ -273,6 +273,13 @@ libfvm_filters_a_LIBADD += libfvm_melissa_a-fvm_to_melissa.$(OBJEXT)
 
 endif
 
+endif
+
+# Rules for CUDA (not known by Automake)
+
+if HAVE_CUDA_CPP
+.cpp.$(OBJEXT):
+	$(NVCC) $(DEFS) $(AM_CPPFLAGS) -I$(top_srcdir)/src/fvm -I../.. $(NVCCFLAGS) $(NVCCFLAGS_DBG) $(NVCCFLAGS_OPT) $(NVCCFLAGS_CPP) -c -o $@ $<
 endif
 
 # Additional rules

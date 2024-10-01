@@ -279,49 +279,16 @@ cs_field_pointer_map_base(void)
   cs_field_pointer_map(CS_ENUMF_(dt),
                        cs_field_by_name_try("dt"));
 
-  cs_field_pointer_map(CS_ENUMF_(p),
-                       cs_field_by_name_try("pressure"));
-  cs_field_pointer_map(CS_ENUMF_(vel),
-                       cs_field_by_name_try("velocity"));
-
-  cs_field_pointer_map(CS_ENUMF_(k),
-                       cs_field_by_name_try("k"));
-  cs_field_pointer_map(CS_ENUMF_(eps),
-                       cs_field_by_name_try("epsilon"));
-
-  cs_field_pointer_map(CS_ENUMF_(rij), cs_field_by_name_try("rij"));
-
-  cs_field_pointer_map(CS_ENUMF_(phi), cs_field_by_name_try("phi"));
-  cs_field_pointer_map(CS_ENUMF_(f_bar), cs_field_by_name_try("f_bar"));
-  cs_field_pointer_map(CS_ENUMF_(alp_bl), cs_field_by_name_try("alpha"));
-
-  cs_field_pointer_map(CS_ENUMF_(omg), cs_field_by_name_try("omega"));
-  cs_field_pointer_map(CS_ENUMF_(nusa), cs_field_by_name_try("nu_tilda"));
-
   cs_field_pointer_map(CS_ENUMF_(hybrid_blend),
                        cs_field_by_name_try("hybrid_blend"));
-
-  cs_field_pointer_map(CS_ENUMF_(mesh_u),
-                       cs_field_by_name_try("mesh_velocity"));
-
-  cs_field_pointer_map(CS_ENUMF_(void_f),
-                       cs_field_by_name_try("void_fraction"));
 
   cs_field_pointer_map(CS_ENUMF_(h),
                        cs_field_by_name_try("enthalpy"));
   cs_field_pointer_map(CS_ENUMF_(t),
                        cs_field_by_name_try("temperature"));
 
-  cs_field_pointer_map(CS_ENUMF_(rho),
-                       cs_field_by_name_try("density"));
-
   cs_field_pointer_map(CS_ENUMF_(cp),
                        cs_field_by_name_try("specific_heat"));
-
-  cs_field_pointer_map(CS_ENUMF_(mu),
-                       cs_field_by_name_try("molecular_viscosity"));
-  cs_field_pointer_map(CS_ENUMF_(mu_t),
-                       cs_field_by_name_try("turbulent_viscosity"));
 
   cs_field_pointer_map(CS_ENUMF_(lambda),
                        cs_field_by_name_try("thermal_conductivity"));
@@ -348,9 +315,6 @@ cs_field_pointer_map_boundary(void)
 {
   cs_field_pointer_map(CS_ENUMF_(t_b),
                        cs_field_by_name_try("boundary_temperature"));
-
-  cs_field_pointer_map(CS_ENUMF_(rho_b),
-                       cs_field_by_name_try("boundary_density"));
 }
 
 /*----------------------------------------------------------------------------*/
@@ -452,43 +416,6 @@ cs_field_pointer_map_coal_combustion(int  n_coals,
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief Map base fields to enumerated pointers for compressible model
- */
-/*----------------------------------------------------------------------------*/
-
-void
-cs_field_pointer_map_compressible(void)
-{
-  cs_field_pointer_map(CS_ENUMF_(e_tot),
-                       cs_field_by_name_try("total_energy"));
-
-  cs_field_pointer_map(CS_ENUMF_(t_kelvin),
-                       cs_field_by_name_try("temperature"));
-
-  /* Also map to main temperature pointer */
-
-  cs_field_pointer_map(CS_ENUMF_(t),
-                       cs_field_by_name_try("temperature"));
-
-  /* map volume specific heat if it is non constant */
-
-  cs_field_pointer_map(CS_ENUMF_(cv),
-                       cs_field_by_name_try("specific_heat_const_vol"));
-
-  /* map fractions for homogeneous two phase model */
-
-  cs_field_pointer_map(CS_ENUMF_(volume_f),
-                       cs_field_by_name_try("volume_fraction"));
-
-  cs_field_pointer_map(CS_ENUMF_(mass_f),
-                       cs_field_by_name_try("mass_fraction"));
-
-  cs_field_pointer_map(CS_ENUMF_(energy_f),
-                       cs_field_by_name_try("energy_fraction"));
-}
-
-/*----------------------------------------------------------------------------*/
-/*!
  * \brief Map base fields to enumerated pointers for gas mix model
  */
 /*----------------------------------------------------------------------------*/
@@ -533,20 +460,6 @@ cs_field_pointer_map_gas_combustion(void)
   cs_field_pointer_map(CS_ENUMF_(coyfp),
                        cs_field_by_name_try("mass_fraction_covariance"));
 }
-
-/*----------------------------------------------------------------------------*/
-/*!
- * \brief Map base fields to enumerated pointers for groundwater flows
- */
-/*----------------------------------------------------------------------------*/
-
-void
-cs_field_pointer_map_groundwater(void)
-{
-  cs_field_pointer_map(CS_ENUMF_(head),
-                       cs_field_by_name_try("hydraulic_head"));
-}
-
 
 /*----------------------------------------------------------------------------*/
 
