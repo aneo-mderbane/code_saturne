@@ -349,6 +349,7 @@ typedef enum {
 typedef double            cs_coord_t;  /* Real number (coordinate value) */
 
 typedef float               cs_float_m;  /* Float by Mohammed*/
+typedef cs_float_m          cs_float_3_m[3];  /* Float by Mohammed*/
 typedef cs_float_m          cs_float_33_m[3][3]; /* Float by Mohammed*/
 typedef cs_float_m          cs_float_63_m[6][3]; /* Float by Mohammed*/
 typedef double              cs_real_t;   /* Fortran double precision */
