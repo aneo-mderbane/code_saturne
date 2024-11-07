@@ -96,6 +96,7 @@ cs_assert.h \
 cs_ast_coupling.h \
 cs_base.h \
 cs_base_accel.h \
+cs_base_mempool.h \
 cs_base_fortran.h \
 cs_block_dist.h \
 cs_block_to_part.h \
@@ -286,7 +287,7 @@ cs_timer.c \
 cs_tree.cpp
 
 if HAVE_ACCEL
-libcscore_a_SOURCES += cs_base_accel.cxx
+libcscore_a_SOURCES += cs_base_accel.cxx cs_base_mempool.cxx
 endif
 
 if HAVE_CUDA

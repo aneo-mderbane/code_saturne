@@ -56,7 +56,8 @@ typedef enum {
                                   if possible */
   CS_ALLOC_HOST_DEVICE_SHARED,  /*!< allocation on host and device,
                                   using mapped/shared memory */
-  CS_ALLOC_DEVICE               /*!< allocation on device only */
+  CS_ALLOC_DEVICE,                /*!< allocation on device only */
+  CS_ALLOC_UNKNOWN
 
 } cs_alloc_mode_t;
 
@@ -75,7 +76,7 @@ typedef struct
 #if defined(HAVE_ACCEL)
   cs_alloc_mode_t  mode;    //!< allocation mode
 #endif
-
+  int ttl;                 //!< Compteur Time To Live
 } cs_mem_block_t;
 
 /*============================================================================

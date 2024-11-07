@@ -55,6 +55,8 @@
 #include "cs_base_cuda.h"
 #endif
 
+#include "cs_base_mempool.h"
+
 /*----------------------------------------------------------------------------
  *  Header for the current file
  *----------------------------------------------------------------------------*/
@@ -503,99 +505,17 @@ cs_malloc_hd(cs_alloc_mode_t   mode,
   if (ni == 0)
     return nullptr;
 
-  cs_mem_block_t  me = {
-    .host_ptr = nullptr,
-    .device_ptr = nullptr,
-    .size = ni * size,
-    .mode = mode};
+  size_t total_size = ni * size;
 
-  if (mode < CS_ALLOC_HOST_DEVICE_PINNED) {
-    me.host_ptr = bft_mem_malloc(ni, size, var_name, nullptr, 0);
-  }
-
-  // Device allocation will be postponed later thru call to
-  // cs_get_device_ptr. This applies for CS_ALLOC_HOST_DEVICE
-  // and CS_ALLOC_HOST_DEVICE_PINNED modes
-
-#if defined(HAVE_CUDA)
-
-  else if (mode == CS_ALLOC_HOST_DEVICE_PINNED)
-    me.host_ptr = cs_cuda_mem_malloc_host(me.size,
-                                          var_name,
-                                          file_name,
-                                          line_num);
-
-  else if (mode == CS_ALLOC_HOST_DEVICE_SHARED) {
-    me.host_ptr = cs_cuda_mem_malloc_managed(me.size,
-                                             var_name,
-                                             file_name,
-                                             line_num);
-    me.device_ptr = me.host_ptr;
-  }
-
-  else if (mode == CS_ALLOC_DEVICE)
-    me.device_ptr = cs_cuda_mem_malloc_device(me.size,
-                                              var_name,
-                                              file_name,
-                                              line_num);
-
-#elif defined(SYCL_LANGUAGE_VERSION)
-
-  else if (mode == CS_ALLOC_HOST_DEVICE_PINNED)
-    me.host_ptr = _sycl_mem_malloc_host(me.size,
-                                        var_name,
-                                        file_name,
-                                        line_num);
-
-  else if (mode == CS_ALLOC_HOST_DEVICE_SHARED) {
-    me.host_ptr = _sycl_mem_malloc_shared(me.size,
-                                          var_name,
-                                          file_name,
-                                          line_num);
-    me.device_ptr = me.host_ptr;
-  }
-
-  else if (mode == CS_ALLOC_DEVICE)
-    me.device_ptr = _sycl_mem_malloc_device(me.size,
-                                            var_name,
-                                            file_name,
-                                            line_num);
-
-#elif defined(HAVE_OPENMP_TARGET)
-
-  else if (mode == CS_ALLOC_HOST_DEVICE_PINNED)
-    me.host_ptr = _omp_target_mem_malloc_host(me.size,
-                                              var_name,
-                                              file_name,
-                                              line_num);
-
-  else if (mode == CS_ALLOC_HOST_DEVICE_SHARED) {
-    me.host_ptr = _omp_target_mem_malloc_managed(me.size,
-                                                 var_name,
-                                                 file_name,
-                                                 line_num);
-    me.device_ptr = me.host_ptr;
-  }
-
-  else if (mode == CS_ALLOC_DEVICE)
-    me.device_ptr = _omp_target_mem_malloc_device(me.size,
-                                                  var_name,
-                                                  file_name,
-                                                  line_num);
-
-#endif
-
-  if (file_name != nullptr)
-    bft_mem_update_block_info(var_name, file_name, line_num,
-                              nullptr, &me);
+  cs_mem_block_t me = MemoryPool::instance().allocate(total_size, mode, var_name, file_name, line_num);
 
   /* Return pointer to allocated memory */
-
   if (me.host_ptr != nullptr)
     return me.host_ptr;
   else
     return me.device_ptr;
 }
+
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -626,7 +546,6 @@ cs_malloc_hd(cs_alloc_mode_t   mode,
  * \returns pointer to allocated memory.
  */
 /*----------------------------------------------------------------------------*/
-
 void *
 cs_realloc_hd(void            *ptr,
               cs_alloc_mode_t  mode,
@@ -639,88 +558,53 @@ cs_realloc_hd(void            *ptr,
   if (_initialized == false)
    _initialize();
 
-  void *ret_ptr = ptr;
-  size_t new_size = ni*size;
-
   if (ptr == nullptr) {
     return cs_malloc_hd(mode, ni, size, var_name, file_name, line_num);
   }
-  else if (new_size == 0) {
+  else if (ni == 0) {
     cs_free_hd(ptr, var_name, file_name, line_num);
     return nullptr;
   }
 
-  cs_mem_block_t me = bft_mem_get_block_info_try(ptr);
+  size_t new_size = ni * size;
+  // Ajuster new_size sur un multiple de 64 octets
+  new_size = ((new_size + 63) / 64) * 64;
 
-  if (new_size == me.size && mode == me.mode) {
-    if (me.host_ptr != nullptr)
-      return me.host_ptr;
-    else
-      return me.device_ptr;
+  cs_mem_block_t me_old = MemoryPool::instance().get_block_info(ptr);
+
+  if (new_size <= me_old.size && mode == me_old.mode) {
+    // Pas besoin de réallocation
+    return ptr;
   }
 
-  cs_mem_block_t me_old = me;
-  me.mode = mode;
+  // Allouer un nouveau bloc
+  cs_mem_block_t me_new = MemoryPool::instance().allocate(new_size, mode, var_name, file_name, line_num);
 
-  if (   me_old.mode <= CS_ALLOC_HOST_DEVICE
-      && me.mode <= CS_ALLOC_HOST_DEVICE) {
-    me.host_ptr = bft_mem_realloc(me_old.host_ptr, ni, size,
-                                  var_name, nullptr, 0);
-    me.size = new_size;
-    ret_ptr = me.host_ptr;
+  // Copier les données existantes
+  size_t copy_size = (new_size < me_old.size) ? new_size : me_old.size;
 
-    if (me.device_ptr != nullptr) {
-#if defined(HAVE_CUDA)
-      cs_cuda_mem_free(me.device_ptr, var_name, file_name, line_num);
-#elif defined(SYCL_LANGUAGE_VERSION)
-      sycl::free(me.device_ptr, cs_glob_sycl_queue);
-#elif defined(HAVE_OPENMP_TARGET)
-      omp_target_free(me.device_ptr, cs_glob_omp_target_device_id);
-#endif
-      me.device_ptr = nullptr;
+  if (copy_size > 0) {
+    if (me_old.host_ptr && me_new.host_ptr) {
+      memcpy(me_new.host_ptr, me_old.host_ptr, copy_size);
+    }
+    else if (me_old.device_ptr && me_new.device_ptr) {
+      cs_copy_d2d(me_new.device_ptr, me_old.device_ptr, copy_size);
+    }
+    else if (me_old.host_ptr && me_new.device_ptr) {
+      cs_copy_h2d(me_new.device_ptr, me_old.host_ptr, copy_size);
+    }
+    else if (me_old.device_ptr && me_new.host_ptr) {
+      cs_copy_d2h(me_new.host_ptr, me_old.device_ptr, copy_size);
     }
   }
 
-  else {
-    size_t copy_size = me_old.size;
-    if (new_size < copy_size)
-      copy_size = new_size;
-    me.size = new_size;
-    me.device_ptr = nullptr;
+  // Libérer l'ancien bloc
+  MemoryPool::instance().deallocate(ptr, var_name, file_name, line_num);
 
-    ret_ptr = cs_malloc_hd(mode, 1, me.size,
-                           var_name, nullptr, 0);
-
-    if (me_old.mode < CS_ALLOC_DEVICE) {
-      if (me.mode < CS_ALLOC_DEVICE)
-        memcpy(ret_ptr, ptr, copy_size);
-      else
-        cs_copy_h2d(ret_ptr, ptr, copy_size);
-    }
-    else { /* if (me.mode == CS_ALLOC_DEVICE) */
-      if (me.mode < CS_ALLOC_DEVICE)
-        cs_copy_d2h(ret_ptr, ptr, copy_size);
-      else
-        cs_copy_d2d(ret_ptr, ptr, copy_size);
-    }
-
-    if (me.mode < CS_ALLOC_DEVICE) {
-      me.host_ptr = ret_ptr;
-      if (mode == CS_ALLOC_HOST_DEVICE_SHARED)
-        me.device_ptr = ret_ptr;
-    }
-    else
-      me.device_ptr = ret_ptr;
-
-    cs_free_hd(ptr, var_name, nullptr, 0);
-  }
-
-  if (file_name != nullptr)
-    bft_mem_update_block_info(var_name, file_name, line_num,
-                              &me_old, &me);
-
-  return ret_ptr;
+  // Retourner le nouveau pointeur
+  return me_new.host_ptr ? me_new.host_ptr : me_new.device_ptr;
 }
+
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -745,54 +629,9 @@ cs_free_hd(void        *ptr,
   if (ptr == nullptr)
     return;
 
-  cs_mem_block_t me = bft_mem_get_block_info_try(ptr);
-
-  if (me.mode < CS_ALLOC_HOST_DEVICE_PINNED)
-    bft_mem_free(me.host_ptr, var_name, nullptr, 0);
-
-  else if (me.host_ptr != nullptr) {
-
-#if defined(HAVE_CUDA)
-
-    if (me.mode == CS_ALLOC_HOST_DEVICE_SHARED)
-      cs_cuda_mem_free(me.host_ptr, var_name, file_name, line_num);
-    else
-      cs_cuda_mem_free_host(me.host_ptr, var_name, file_name, line_num);
-
-#elif defined(SYCL_LANGUAGE_VERSION)
-
-    sycl::free(me.host_ptr, cs_glob_sycl_queue);
-
-#elif defined(HAVE_OPENMP_TARGET)
-
-    omp_target_free(me.host_ptr, cs_glob_omp_target_device_id);
-
-#endif
-
-  }
-
-  if (me.device_ptr != nullptr && me.device_ptr != me.host_ptr) {
-
-#if defined(HAVE_CUDA)
-
-    cs_cuda_mem_free(me.device_ptr, var_name, file_name, line_num);
-
-#elif defined(SYCL_LANGUAGE_VERSION)
-
-    sycl::free(me.device_ptr, cs_glob_sycl_queue);
-
-#elif defined(HAVE_OPENMP_TARGET)
-
-    omp_target_free(me.device_ptr, cs_glob_omp_target_device_id);
-
-#endif
-
-  }
-
-  if (file_name != nullptr)
-    bft_mem_update_block_info(var_name, file_name, line_num,
-                              &me, nullptr);
+  MemoryPool::instance().deallocate(ptr, var_name, file_name, line_num);
 }
+
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -809,14 +648,15 @@ cs_free_hd(void        *ptr,
  * \returns pointer to device memory.
  */
 /*----------------------------------------------------------------------------*/
-
 void *
 cs_get_device_ptr(void  *ptr)
 {
   if (ptr == nullptr)
     return nullptr;
 
-  cs_mem_block_t me = bft_mem_get_block_info_try(ptr);
+  cs_mem_block_t me = MemoryPool::instance().get_block_info(ptr);
+
+
   if (me.mode == CS_ALLOC_HOST) {
     bft_error(__FILE__, __LINE__, 0,
               _("%s: %p has no device association."), __func__, ptr);
@@ -824,49 +664,15 @@ cs_get_device_ptr(void  *ptr)
   }
 
   /* Allocate on device if not done yet */
-
   if (me.device_ptr == nullptr) {
-    if (   me.mode == CS_ALLOC_HOST_DEVICE
-        || me.mode == CS_ALLOC_HOST_DEVICE_PINNED) {
-
-      cs_mem_block_t me_old = me;
-
-#if defined(HAVE_CUDA)
-
-      me.device_ptr = cs_cuda_mem_malloc_device(me.size,
-                                                "me.device_ptr",
-                                                __FILE__,
-                                                __LINE__);
-
-#elif defined(SYCL_LANGUAGE_VERSION)
-
-      me.device_ptr = _sycl_mem_malloc_device(me.size,
-                                              "me.device_ptr",
-                                              __FILE__,
-                                              __LINE__);
-
-#elif defined(HAVE_OPENMP_TARGET)
-
-      me.device_ptr = _omp_target_mem_malloc_device(me.size,
-                                                    "me.device_ptr",
-                                                    __FILE__,
-                                                    __LINE__);
-
-      if (omp_target_associate_ptr(me.host_ptr, me.device_ptr, me.size, 0,
-                                   cs_glob_omp_target_device_id))
-        bft_error(__FILE__, __LINE__, 0,
-                  _("%s: Can't associate host pointer %p to device pointer %p."),
-                  "omp_target_associate_ptr", me.host_ptr, me.device_ptr);
-
-#endif
-
-      bft_mem_update_block_info("me.device_ptr", __FILE__, __LINE__,
-                                &me_old, &me);
-    }
+    cs_mem_block_t me_new = MemoryPool::instance().allocate_device(me, __FILE__, __LINE__);
+    MemoryPool::instance().update_block(ptr, me_new);
+    me = me_new;
   }
 
   return me.device_ptr;
 }
+
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -1251,17 +1057,16 @@ cs_mem_advise_unset_read_mostly(void  *ptr)
  * \param [in, out]  ptr  host pointer to values to copy or prefetch
  */
 /*----------------------------------------------------------------------------*/
-
 void
 cs_sync_h2d(const void  *ptr)
 {
   if (ptr == nullptr)
     return;
 
-  cs_mem_block_t me = bft_mem_get_block_info(ptr);
+  cs_mem_block_t me = MemoryPool::instance().get_block_info(const_cast<void*>(ptr));
 
   if (me.device_ptr == nullptr)
-    me.device_ptr = const_cast<void *>(cs_get_device_ptr_const(ptr));
+    me.device_ptr = const_cast<void *>(cs_get_device_ptr(const_cast<void*>(ptr)));
 
   switch (me.mode) {
 
@@ -1272,59 +1077,17 @@ cs_sync_h2d(const void  *ptr)
     break;
 
   case CS_ALLOC_HOST_DEVICE:
-    #if defined(HAVE_CUDA)
-    {
-      cs_cuda_copy_h2d(me.device_ptr, me.host_ptr, me.size);
-    }
-    #elif defined(SYCL_LANGUAGE_VERSION)
-    {
-      cs_glob_sycl_queue.memcpy(me.device_ptr, me.host_ptr, me.size);
-    }
-    #elif defined(HAVE_OPENMP_TARGET)
-    {
-      omp_target_memcpy(me.device_ptr, me.host_ptr, me.size, 0, 0,
-                        cs_glob_omp_target_device_id, omp_get_initial_device());
-    }
-    #endif
+    cs_copy_h2d(me.device_ptr, me.host_ptr, me.size);
     break;
 
   case CS_ALLOC_HOST_DEVICE_PINNED:
-    #if defined(HAVE_CUDA)
-    {
-      cs_cuda_copy_h2d_async(me.device_ptr, me.host_ptr, me.size);
-    }
-    #elif defined(SYCL_LANGUAGE_VERSION)
-    {
-      cs_glob_sycl_queue.memcpy(me.device_ptr, me.host_ptr, me.size);
-    }
-    #elif defined(HAVE_OPENMP_TARGET)
-    {
-      char *host_ptr = (char *)me.device_ptr;
-      #pragma omp target enter data map(to:host_ptr[:me.size]) \
-        nowait device(cs_glob_omp_target_device_id)
-    }
-    #endif
+    cs_copy_h2d(me.device_ptr, me.host_ptr, me.size);
     break;
 
   case CS_ALLOC_HOST_DEVICE_SHARED:
     if (_ignore_prefetch)
       return;
-
-    #if defined(HAVE_CUDA)
-    {
-      cs_cuda_prefetch_h2d(me.device_ptr, me.size);
-    }
-    #elif defined(SYCL_LANGUAGE_VERSION)
-    {
-      cs_glob_sycl_queue.prefetch(me.device_ptr, me.size);
-    }
-    #elif defined(HAVE_OPENMP_TARGET)
-    {
-      char *host_ptr = (char *)me.host_ptr;
-      #pragma omp target enter data map(to:host_ptr[:me.size]) \
-        nowait device(cs_glob_omp_target_device_id)
-    }
-    #endif
+    cs_prefetch_h2d(me.host_ptr, me.size);
     break;
 
   case CS_ALLOC_DEVICE:
@@ -1335,6 +1098,7 @@ cs_sync_h2d(const void  *ptr)
 
   }
 }
+
 
 /*----------------------------------------------------------------------------*/
 /*!

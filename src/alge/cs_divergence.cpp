@@ -526,10 +526,10 @@ cs_mass_flux(const cs_mesh_t             *m,
     4. Compute mass flux with reconstruction method if the mesh is
        non orthogonal
     ==========================================================================*/
-
+  CS_MALLOC_HD(grdqdm, n_cells_ext, cs_real_33_t, amode);
   if (nswrgu > 1) {
 
-    CS_MALLOC_HD(grdqdm, n_cells_ext, cs_real_33_t, amode);
+
 
     /* Computation of momentum gradient
        (vectorial gradient, the periodicity has already been treated) */
@@ -611,14 +611,8 @@ cs_mass_flux(const cs_mesh_t             *m,
         b_massflux[face_id] += pfac*b_f_face_normal[face_id][isou];
       }
     });
-     /* Deallocation */
-    CS_FREE_HD(grdqdm);
+   
   }
-
-  CS_FREE_HD(qdm);
-  CS_FREE_HD(f_momentum);
-  CS_FREE_HD(_i_f_face_factor);
-  CS_FREE_HD(_b_f_face_factor);
 
   coefaq = nullptr;
   cs_field_bc_coeffs_free_copy(bc_coeffs_v, &bc_coeffs_v_loc);
@@ -640,6 +634,15 @@ cs_mass_flux(const cs_mesh_t             *m,
 
   ctx.wait();
   ctx_c.wait();
+
+  /* Deallocation */
+  CS_FREE_HD(grdqdm);
+  CS_FREE_HD(qdm);
+  CS_FREE_HD(f_momentum);
+  CS_FREE_HD(_i_f_face_factor);
+  CS_FREE_HD(_b_f_face_factor);
+
+
 }
 
 /*----------------------------------------------------------------------------*/
@@ -1515,10 +1518,12 @@ cs_ext_force_flux(const cs_mesh_t          *m,
 
   }
 
-  CS_FREE_HD(_f_ext);
-
   ctx.wait();
   ctx_c.wait();
+
+  if (_f_ext != nullptr)
+    CS_FREE_HD(_f_ext);
+
 }
 
 /*----------------------------------------------------------------------------*/

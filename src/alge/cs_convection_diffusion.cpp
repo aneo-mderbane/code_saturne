@@ -848,9 +848,7 @@ _slope_test_gradient_h
 
 #if defined(HAVE_ACCEL)
 
-static void
-_slope_test_gradient_d
-  (cs_device_context          &ctx,
+static void _slope_test_gradient_d(cs_device_context          &ctx,
    int                         inc,
    const cs_real_3_t          *grad,
    cs_real_3_t                *restrict grdpa,
@@ -8238,15 +8236,14 @@ cs_convection_diffusion_vector(int                         idtvar,
     });
 
 
-    /*Free memory */
-    CS_FREE_HD(bndcel);
-
+   
   }
 
   ctx.wait();
 
   /* Free memory */
   CS_FREE_HD(grad);
+  CS_FREE_HD(bndcel);
 
   if (cs_glob_timer_kernels_flag > 0) {
     std::chrono::high_resolution_clock::time_point
@@ -11309,11 +11306,12 @@ cs_face_diffusion_potential(const int                   f_id,
     3. Update mass flux with reconstruction technique if the mesh is non
        orthogonal
     ==========================================================================*/
+  cs_real_3_t *grad = nullptr;
 
   if (nswrgp > 1) {
 
     /* Allocate a work array for the gradient calculation */
-    cs_real_3_t *grad;
+  
     CS_MALLOC_HD(grad, n_cells_ext, cs_real_3_t, cs_alloc_mode);
 
     /* Compute gradient */
@@ -11400,12 +11398,14 @@ cs_face_diffusion_potential(const int                   f_id,
 
       cs_dispatch_sum(&b_massflux[face_id], b_visc[face_id]*pfac, b_sum_type);
     });
-
-    /* Free memory */
-    CS_FREE_HD(grad);
   }
   ctx_i.wait();
   ctx_b.wait();
+
+  /* Free memory */
+  if (grad != nullptr)
+    CS_FREE_HD(grad);
+
 }
 
 /*----------------------------------------------------------------------------*/
@@ -11947,7 +11947,7 @@ cs_diffusion_potential(const int                   f_id,
   int mass_flux_rec_type = cs_glob_velocity_pressure_param->irecmf;
   int w_stride = 1;
 
-  cs_real_3_t *grad;
+  cs_real_3_t *grad = nullptr;
   cs_field_t *f;
 
   cs_real_t *gweight = nullptr;
@@ -12148,10 +12148,11 @@ cs_diffusion_potential(const int                   f_id,
 
     });
 
-    /* Free memory */
-    CS_FREE_HD(grad);
   }
   ctx.wait();
+
+    /* Free memory */
+    CS_FREE_HD(grad);
 }
 
 /*----------------------------------------------------------------------------*/

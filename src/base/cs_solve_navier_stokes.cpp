@@ -3696,7 +3696,7 @@ cs_solve_navier_stokes_update_total_pressure
         cpro_prtot[c_id] -= 2.0/3 * cpro_rho[c_id]*cvar_k[c_id];
     });
   }
-
+  ctx.wait();
 }
 
 /*----------------------------------------------------------------------------*/
