@@ -709,6 +709,7 @@ _pressure_correction_fv(int                   iterns,
       });
 
       ctx.wait();
+      ctx_c.wait();
 
       brom = bpro_rho_tc;
     }

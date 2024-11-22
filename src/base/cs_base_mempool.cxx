@@ -87,9 +87,9 @@ MemoryPool::allocate(size_t          size,
       cs_mem_block_t me = *it2;
       free_blocks.erase(it2);
       allocated_blocks_[me.host_ptr] = me;
-      if (file_name != nullptr) {
-        bft_mem_update_block_info(var_name, file_name, line_num, nullptr, &me);
-      }
+      // if (file_name != nullptr) {
+      //   bft_mem_update_block_info(var_name, file_name, line_num, &me, &me);
+      // }
       return me;
     }
   }

@@ -61,6 +61,7 @@
  *----------------------------------------------------------------------------*/
 
 #include "cs_mesh_adjacencies.h"
+#include "cs_dispatch.h"
 
 /*----------------------------------------------------------------------------*/
 
@@ -212,9 +213,99 @@ _update_cell_cells(cs_mesh_adjacencies_t  *ma)
  * parameters:
  *   ma <-> mesh adjacecies structure to update
  *----------------------------------------------------------------------------*/
-
 static void
 _update_cell_i_faces(cs_mesh_adjacencies_t  *ma)
+{
+  assert(ma->cell_cells_idx != nullptr);
+
+  const cs_mesh_t *m = cs_glob_mesh;
+  const cs_lnum_2_t *restrict face_cells
+    = (const cs_lnum_2_t *restrict)m->i_face_cells;
+  const cs_lnum_t n_cells = m->n_cells;
+  const cs_lnum_t n_faces = m->n_i_faces;
+
+  const cs_lnum_t *c2c = ma->cell_cells;
+  const cs_lnum_t *c2c_idx = ma->cell_cells_idx;
+
+  /* Allocate and map */
+
+  const cs_lnum_t n_elts = c2c_idx[n_cells];
+
+  cs_alloc_mode_t alloc_mode = cs_check_device_ptr(ma->cell_i_faces);
+
+#if defined(HAVE_ACCEL)
+  alloc_mode = CS_ALLOC_HOST_DEVICE_SHARED;
+
+#endif
+  CS_REALLOC_HD(ma->cell_i_faces, n_elts, cs_lnum_t, alloc_mode);
+  cs_mem_advise_set_read_mostly(ma->cell_i_faces);
+
+  CS_REALLOC_HD(ma->cell_i_faces_sgn, n_elts, short int, alloc_mode);
+  cs_mem_advise_set_read_mostly(ma->cell_i_faces_sgn);
+
+  CS_REALLOC_HD(ma->cell_cells_idx, n_cells+1, cs_lnum_t, alloc_mode);
+  cs_mem_advise_set_read_mostly(ma->cell_cells_idx);
+
+  CS_REALLOC_HD(ma->cell_cells, ma->cell_cells_idx[n_cells], cs_lnum_t, alloc_mode);
+  cs_mem_advise_set_read_mostly(ma->cell_cells);
+
+  cs_lnum_t *c2i = ma->cell_i_faces;
+  short int *sgn = ma->cell_i_faces_sgn;
+
+  c2c = ma->cell_cells;
+  c2c_idx = ma->cell_cells_idx;
+
+  /* Create dispatch context */
+  cs_dispatch_context ctx;
+
+  /* Loop in cells rather than faces as it may lead to
+     better first touch behavior */
+
+  ctx.parallel_for(n_cells, [=] CS_F_HOST_DEVICE (cs_lnum_t i) {
+    cs_lnum_t s_id = c2c_idx[i];
+    cs_lnum_t e_id = c2c_idx[i+1];
+    for (cs_lnum_t j = s_id; j < e_id; j++) {
+      c2i[j] = 0;
+      sgn[j] = 0;
+    }
+  });
+
+  /* Now set values */
+
+  ctx.parallel_for(n_faces, [=] CS_F_HOST_DEVICE (cs_lnum_t face_id) {
+
+    cs_lnum_t i = face_cells[face_id][0];
+    cs_lnum_t j = face_cells[face_id][1];
+
+    cs_lnum_t s_id, e_id;
+
+    if (i < n_cells) {
+      s_id = c2c_idx[i];
+      e_id = c2c_idx[i+1];
+      for (cs_lnum_t k = s_id; k < e_id; k++) {
+        if (c2c[k] == j) {
+          c2i[k] = face_id;
+          sgn[k] = 1;
+        }
+      }
+    }
+
+    if (j < n_cells) {
+      s_id = c2c_idx[j];
+      e_id = c2c_idx[j+1];
+      for (cs_lnum_t k = s_id; k < e_id; k++) {
+        if (c2c[k] == i) {
+          c2i[k] = face_id;
+          sgn[k] = -1;
+        }
+      }
+    }
+  });
+  ctx.wait();
+}
+
+static void
+_update_cell_i_faces_orig(cs_mesh_adjacencies_t  *ma)
 {
   assert(ma->cell_cells_idx != nullptr);
 
@@ -795,6 +886,15 @@ cs_mesh_adjacencies_update_cell_i_faces(void)
 
   if (ma->cell_i_faces == nullptr)
     _update_cell_i_faces(ma);
+}
+
+void
+cs_mesh_adjacencies_update_cell_i_faces_orig(void)
+{
+  cs_mesh_adjacencies_t *ma = &_cs_glob_mesh_adjacencies;
+
+  if (ma->cell_i_faces == nullptr)
+    _update_cell_i_faces_orig(ma);
 }
 
 /*----------------------------------------------------------------------------*/

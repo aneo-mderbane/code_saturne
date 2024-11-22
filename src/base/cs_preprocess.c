@@ -226,7 +226,7 @@ cs_preprocess_mesh_define(void)
   cs_user_join();
 
   cs_gui_mesh_define_periodicities();
-  //cs_user_periodicity();
+  cs_user_periodicity();
 
   cs_gui_mesh_warping();
   cs_user_mesh_warping();
